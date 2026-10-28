@@ -1,0 +1,70 @@
+/* Styles for /auditor. Uses the variables and shared classes from app/globals.css. */
+.aud-page{min-height:100vh;background:var(--paper);color:var(--ink)}
+.aud-top{height:70px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 38px}
+.aud-brand{padding:0;text-decoration:none;color:inherit}
+.aud-back{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;color:#176b45;text-decoration:none}
+.aud-back:hover{text-decoration:underline}
+.aud-wrap{max-width:860px;margin:0 auto;padding:44px 24px 48px}
+.aud-hero h1{font-family:Manrope,sans-serif;font-size:36px;letter-spacing:-1.5px;line-height:1.12;margin:0;font-weight:800;color:#17271e}
+.aud-hero .subtitle{font-size:14px;line-height:1.6;max-width:560px}
+.aud-form{display:flex;gap:10px;margin-top:26px}
+.aud-input{flex:1;min-width:0;height:50px;border:1px solid #dfe7e1;border-radius:10px;padding:0 16px;font-size:15px;background:#fff;color:var(--ink);box-shadow:var(--shadow)}
+.aud-input::placeholder{color:#a3aea7}
+.aud-submit{height:50px;padding:0 22px;font-size:12px;border-radius:10px}
+.aud-hint{font-size:11px;color:var(--muted);margin:11px 2px 0}
+.aud-error{margin-top:16px;background:#fef3f2;border:1px solid #fecdca;color:#b42318;border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.5}
+.aud-spinner{width:13px;height:13px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;display:inline-block;animation:aud-spin .7s linear infinite}
+.aud-spinner.dark{border:2px solid #cfe5d8;border-top-color:var(--green)}
+@keyframes aud-spin{to{transform:rotate(360deg)}}
+.aud-loading{display:flex;align-items:center;gap:12px;padding:20px;margin-top:28px;font-size:12px;color:#5f7367}
+
+.aud-report{margin-top:38px;scroll-margin-top:20px}
+.aud-score-card{display:flex;align-items:center;gap:26px;padding:24px}
+.aud-ring{width:116px;height:116px;border-radius:50%;display:grid;place-items:center;flex-shrink:0}
+.aud-ring-inner{width:88px;height:88px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.aud-ring-inner strong{font-family:Manrope,sans-serif;font-size:30px;font-weight:800;letter-spacing:-1px;line-height:1}
+.aud-ring-inner span{font-size:10px;color:#8a978f;margin-top:4px}
+.aud-score-copy{min-width:0}
+.aud-score-label{font-size:9px;letter-spacing:1.2px;font-weight:700;color:#718b7c;text-transform:uppercase}
+.aud-score-copy h2{font-family:Manrope,sans-serif;font-size:20px;letter-spacing:-.6px;margin:6px 0 0;overflow-wrap:anywhere}
+.aud-score-copy p{font-size:12px;line-height:1.6;color:#6f7e73;margin:8px 0 0}
+.aud-chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
+.aud-actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 8px}
+
+.aud-h2{font-family:Manrope,sans-serif;font-size:17px;letter-spacing:-.4px;margin:30px 0 0;font-weight:800}
+.aud-h2-sub{font-size:11px;color:#849087;margin:5px 0 14px}
+.aud-h2 + .aud-finding{margin-top:14px}
+.aud-finding{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow);margin-bottom:12px}
+.aud-finding-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.aud-num{width:26px;height:26px;border-radius:8px;background:#e7f5ec;color:#21734a;display:grid;place-items:center;font-size:10px;font-weight:700}
+.aud-cat{font-size:10px;color:#87938b}
+.aud-finding h3{font-family:Manrope,sans-serif;font-size:15px;letter-spacing:-.3px;margin:0}
+.aud-field{margin-top:12px}
+.aud-field span{display:block;font-size:9px;letter-spacing:1px;font-weight:700;color:#9aa69e;margin-bottom:5px}
+.aud-field p{margin:0;font-size:12px;line-height:1.65;color:#4d5f53;overflow-wrap:anywhere}
+.aud-sev{display:inline-block;font-size:9px;font-weight:700;padding:5px 8px;border-radius:5px;letter-spacing:.2px}
+.aud-sev.high{background:#fef3f2;color:#b42318}
+.aud-sev.medium{background:#fffaeb;color:#b54708}
+.aud-sev.low{background:#eff8ff;color:#175cd3}
+.aud-sev.pass{background:#ecfdf3;color:#067647}
+.aud-empty{display:flex;align-items:center;gap:10px;padding:18px 20px;margin-top:24px;font-size:12px;color:#067647}
+
+.aud-passes{margin-top:24px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.aud-passes summary{cursor:pointer;padding:15px 20px;font-size:12px;font-weight:700;color:#3f5a4a}
+.aud-passes ul{list-style:none;margin:0;padding:0 20px 8px}
+.aud-passes li{display:flex;gap:11px;padding:12px 0;border-top:1px solid #edf1ee}
+.aud-passes li svg{color:#21804e;flex-shrink:0;margin-top:2px}
+.aud-passes li strong{display:block;font-size:11px}
+.aud-passes li span{display:block;font-size:10px;color:#849087;margin-top:4px;line-height:1.5;overflow-wrap:anywhere}
+.aud-note{margin:24px 0 0}
+.aud-foot{font-size:10px;color:#9aa59d;margin:18px 2px 0;line-height:1.6}
+
+@media(max-width:800px){
+  .aud-top{height:60px;padding:0 15px}
+  .aud-wrap{padding:28px 15px 36px}
+  .aud-hero h1{font-size:27px;letter-spacing:-1px}
+  .aud-form{flex-direction:column}
+  .aud-submit{width:100%}
+  .aud-score-card{flex-direction:column;align-items:flex-start;padding:20px}
+  .aud-finding{padding:16px}
+}

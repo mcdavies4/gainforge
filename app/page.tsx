@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Lightbulb, ListChecks, Mail, Menu, Plus, Search,
   Settings2, Sparkles, Target, TrendingUp, Users, X, Zap
 } from "lucide-react";
+import Link from "next/link";
 
 type Opportunity = {
   id: number;
@@ -49,6 +50,7 @@ export default function Home() {
   const [selected, setSelected] = useState<Opportunity | null>(null);
   const [toast, setToast] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
+  const auditorHref = website.trim() ? `/auditor?url=${encodeURIComponent(website.trim())}` : "/auditor";
 
   const visibleOpportunities = useMemo(() => opportunities.filter(o => {
     const filterMatch = filter === "All" || o.status === filter;
@@ -113,6 +115,7 @@ export default function Home() {
         </nav>
         <div className="nav-caption tools-caption">TOOLS</div>
         <button className="nav-item" onClick={() => { setShowSetup(true); setMobileMenu(false); }}><Settings2 size={18}/><span>Business profile</span></button>
+        <Link href={auditorHref} className="nav-item" style={{ textDecoration: "none" }} onClick={() => setMobileMenu(false)}><Search size={18}/><span>Website auditor</span><span className="nav-count">NEW</span></Link>
         <button className="nav-item" onClick={() => notify("Integrations are planned for a later MVP phase.")}><Zap size={18}/><span>Integrations</span><span className="soon">SOON</span></button>
         <div className="sidebar-bottom">
           <div className="upgrade-card">
@@ -166,6 +169,7 @@ export default function Home() {
               <section className="panel action-panel">
                 <div className="panel-header"><div><h2>Next best actions</h2><p>Small steps that create momentum.</p></div><div className="sparkle-badge"><Sparkles size={15}/></div></div>
                 <div className="action-item"><div className="action-check"><Check size={13}/></div><div><strong>Complete your business profile</strong><span>Help us tailor recommendations</span></div><button onClick={() => setShowSetup(true)} aria-label="Complete business profile"><ArrowRight size={16}/></button></div>
+                <div className="action-item"><div className="action-check muted"><Globe2 size={13}/></div><div><strong>Audit your website</strong><span>Find what may be holding conversions back</span></div><Link href={auditorHref} aria-label="Run website audit" style={{ color: "#a1aca4", padding: 5, display: "flex" }}><ArrowRight size={16}/></Link></div>
                 <div className="action-item"><div className="action-check muted"><Search size={13}/></div><div><strong>Validate one opportunity</strong><span>Confirm the need before investing time</span></div><button onClick={() => setSelected(opportunities[0])} aria-label="Validate opportunity"><ArrowRight size={16}/></button></div>
                 <div className="action-item"><div className="action-check muted"><Mail size={13}/></div><div><strong>Prepare a helpful first touch</strong><span>Human review before sending</span></div><button onClick={() => setSelected(opportunities[0])} aria-label="Prepare outreach"><ArrowRight size={16}/></button></div>
                 <div className="note-box"><Lightbulb size={16}/><p><strong>Growth principle</strong><br/>Prioritise evidence and customer conversations before spending on automation.</p></div>
