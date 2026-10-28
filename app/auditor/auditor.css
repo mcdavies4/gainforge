@@ -59,6 +59,40 @@
 .aud-note{margin:24px 0 0}
 .aud-foot{font-size:10px;color:#9aa59d;margin:18px 2px 0;line-height:1.6}
 
+.aud-samples{display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap;margin:14px 2px 0;font-size:11px;color:var(--muted)}
+.aud-link{border:0;background:transparent;padding:0;color:#176b45;font-weight:700;font-size:11px;text-decoration:underline;text-underline-offset:3px}
+.aud-link:disabled{opacity:.5;cursor:wait}
+.aud-sample-banner{background:#eef1ff;border:1px solid #dde2ff;color:#4a53a8;border-radius:10px;padding:11px 14px;font-size:11px;line-height:1.6;margin-bottom:14px}
+.aud-print-head{display:none}
+
+.aud-plan{padding:20px 20px 10px;margin-top:6px}
+.aud-plan-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.aud-plan h2{font-family:Manrope,sans-serif;font-size:16px;letter-spacing:-.4px;margin:0;font-weight:800}
+.aud-plan p{font-size:11px;color:#849087;margin:5px 0 0;line-height:1.5}
+.aud-plan-count{font-size:10px;font-weight:700;color:#176b45;background:#e9f6ef;padding:5px 8px;border-radius:5px;white-space:nowrap}
+.aud-progress{height:5px;border-radius:4px;background:#edf1ee;margin:14px 0 8px;overflow:hidden}
+.aud-progress div{height:100%;background:#369762;border-radius:4px;transition:width .25s}
+.aud-plan ul{list-style:none;margin:6px 0 0;padding:0}
+.aud-plan li{border-top:1px solid #edf1ee}
+.aud-plan label{display:flex;gap:12px;align-items:flex-start;padding:13px 2px;cursor:pointer}
+.aud-plan input[type=checkbox]{width:17px;height:17px;margin:2px 0 0;accent-color:var(--green);flex-shrink:0}
+.aud-plan-text strong{display:block;font-size:12px;line-height:1.4}
+.aud-plan-text small{display:block;font-size:10px;color:#8a978f;margin-top:4px}
+.aud-plan li.done strong{text-decoration:line-through;color:#98a49c}
+.aud-effort{font-size:10px;color:#6f7e73;background:#f3f5f3;padding:5px 8px;border-radius:5px}
+
+.aud-lead{margin-top:28px;padding:22px;background:#edf7f0;border:1px solid #dcefe3;border-radius:12px}
+.aud-lead h2{font-family:Manrope,sans-serif;font-size:17px;letter-spacing:-.4px;margin:0;font-weight:800}
+.aud-lead p{font-size:12px;line-height:1.65;color:#5f7367;margin:8px 0 0;max-width:600px}
+.aud-lead form{display:grid;gap:12px;margin-top:16px;position:relative}
+.aud-lead-row{display:flex;gap:10px}
+.aud-lead-row .aud-input{height:46px;font-size:13px;box-shadow:none}
+.aud-lead-row .primary-button{height:46px;padding:0 18px;border-radius:10px}
+.aud-consent{display:flex;gap:9px;align-items:flex-start;font-size:11px;line-height:1.55;color:#5f7367;cursor:pointer}
+.aud-consent input{margin-top:2px;accent-color:var(--green);flex-shrink:0}
+.aud-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.aud-lead-done{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;color:#176b45}
+
 @media(max-width:800px){
   .aud-top{height:60px;padding:0 15px}
   .aud-wrap{padding:28px 15px 36px}
@@ -67,4 +101,18 @@
   .aud-submit{width:100%}
   .aud-score-card{flex-direction:column;align-items:flex-start;padding:20px}
   .aud-finding{padding:16px}
+  .aud-plan{padding:16px 16px 8px}
+  .aud-plan-head{flex-direction:column;gap:10px}
+  .aud-lead{padding:18px}
+  .aud-lead-row{flex-direction:column}
+}
+
+@media print{
+  .aud-top,.aud-hero,.aud-actions,.aud-lead{display:none!important}
+  .aud-page{background:#fff}
+  .aud-wrap{max-width:none;padding:0}
+  .aud-report{margin-top:0}
+  .aud-print-head{display:block;font-family:Manrope,sans-serif;font-size:12px;font-weight:800;color:#176b45;margin-bottom:14px}
+  .aud-score-card,.aud-finding,.aud-plan,.aud-note{break-inside:avoid;box-shadow:none}
+  .aud-passes{display:none}
 }

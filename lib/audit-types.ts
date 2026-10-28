@@ -8,10 +8,15 @@ export type Category =
   | "Sharing"
   | "Trust";
 
+/** Rough time to fix: quick ≈ 15 minutes, medium ≈ 1–2 hours, bigger ≈ half a day or more. */
+export type Effort = "quick" | "medium" | "bigger";
+
 export interface Finding {
   id: string;
   category: Category;
   severity: Severity;
+  /** Set on issues only (not on passed checks). */
+  effort?: Effort;
   title: string;
   /** What the tool actually detected in the page HTML. */
   evidence: string;
@@ -21,6 +26,8 @@ export interface Finding {
 }
 
 export interface AuditReport {
+  /** True for the built-in example reports (fictional businesses). */
+  sample?: boolean;
   url: string;
   finalUrl: string;
   fetchedAt: string;

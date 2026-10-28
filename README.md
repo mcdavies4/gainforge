@@ -27,6 +27,15 @@ GainForge is a global AI Growth Agent concept. This package contains a polished 
 - The rate limit is per server instance. Add a shared store (e.g. Upstash Redis) before promoting the tool widely
 - Test with several real sites before launch. Some sites block automated requests and will show an error
 
+### Sharing, sample reports and early-access signups
+
+- Each issue has an effort estimate (quick win, 1–2 hours, half a day). Within a priority level, quick wins are listed first
+- The report has a tick-off action plan (progress is remembered in the visitor's browser), plus Copy summary, Save as PDF (browser print) and CSV export
+- Sample reports for two fictional businesses (`GET /api/audit/sample?type=local|saas`, content in `lib/samples.ts`) run through the real engine and are clearly labelled as samples
+- Early-access signup form (`POST /api/leads`): email plus an unticked consent box, a hidden honeypot field and a per-IP rate limit
+- Set `LEAD_WEBHOOK_URL` in Vercel (a Make, Zapier or Google Apps Script webhook that adds a row to a sheet) so signups are saved. Without it they only appear in the server logs
+- Before promoting the auditor publicly, add a privacy notice that says what you do with email addresses and the websites people enter (UK GDPR)
+
 ## Important current limitation
 
 This is still mostly a **front-end prototype**, not yet a production SaaS. The auditor is real, but the dashboard's opportunities are sample records, the business profile website field only pre-fills the auditor, and profile changes are not persisted to a database. AI, real opportunity discovery, account authentication, billing and integrations have not yet been connected.

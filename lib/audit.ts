@@ -1,8 +1,8 @@
 import { lookup } from "node:dns/promises";
 import net from "node:net";
-import type { AuditReport, Finding, Severity } from "./audit-types";
+import type { AuditReport, Effort, Finding, Severity } from "./audit-types";
 
-export type { AuditReport, Finding, Severity } from "./audit-types";
+export type { AuditReport, Effort, Finding, Severity } from "./audit-types";
 
 export class AuditError extends Error {
   status: number;
@@ -252,6 +252,28 @@ const CTA_PHRASES = [
 
 const WEIGHTS: Record<Severity, number> = { high: 15, medium: 8, low: 3, pass: 0 };
 const ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2, pass: 3 };
+
+/** Rough time to fix each issue. Within the same priority, quick wins are listed first. */
+const EFFORT_BY_ID: Record<string, Effort> = {
+  "title-missing": "quick",
+  "title-short": "quick",
+  "title-long": "quick",
+  "description-missing": "quick",
+  "description-length": "quick",
+  "canonical-missing": "quick",
+  "h1-missing": "quick",
+  "h1-multiple": "quick",
+  "content-thin": "bigger",
+  "cta-missing": "quick",
+  "viewport-missing": "quick",
+  "og-missing": "medium",
+  "og-partial": "quick",
+  "https-missing": "medium",
+  "contact-missing": "quick",
+  "lang-missing": "quick",
+  "alt-missing": "medium",
+};
+const EFFORT_ORDER: Record<Effort, number> = { quick: 0, medium: 1, bigger: 2 };
 
 export function analyseHtml(
   html: string,
@@ -553,7 +575,14 @@ export function analyseHtml(
   }
 
   /* ---- Assemble ----------------------------------------------------------- */
-  findings.sort((a, b) => ORDER[a.severity] - ORDER[b.severity]);
+  for (const f of findings) {
+    if (f.severity !== "pass") f.effort = EFFORT_BY_ID[f.id] ?? "medium";
+  }
+  findings.sort(
+    (a, b) =>
+      ORDER[a.severity] - ORDER[b.severity] ||
+      EFFORT_ORDER[a.effort ?? "quick"] - EFFORT_ORDER[b.effort ?? "quick"]
+  );
 
   const counts = { high: 0, medium: 0, low: 0, pass: 0 };
   let penalty = 0;
