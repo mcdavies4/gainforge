@@ -3,8 +3,10 @@
 import "./auditor.css";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, Copy, Download, Lightbulb, Printer, Search, TrendingUp } from "lucide-react";
+import { ArrowLeft, Check, Copy, Download, Lightbulb, Printer, Search, Sparkles, TrendingUp } from "lucide-react";
 import type { AuditReport, Effort, Finding, Severity } from "@/lib/audit-types";
+import { sendLeadToWebhook } from "@/lib/webhook";
+import { saveLatestAudit } from "@/lib/growth-engine";
 
 const SEVERITY_LABEL: Record<Severity, string> = {
   high: "High priority",
@@ -110,6 +112,7 @@ export default function AuditorPage() {
         throw new Error(data?.error ?? "Something went wrong. Please try again.");
       }
       setReport(data as AuditReport);
+      saveLatestAudit(data as AuditReport);
       window.setTimeout(
         () => document.getElementById("audit-report")?.scrollIntoView({ behavior: "smooth", block: "start" }),
         60
@@ -291,6 +294,13 @@ export default function AuditorPage() {
             </div>
 
             <div className="aud-actions">
+              <Link
+                href={`/?syncAudit=true&url=${encodeURIComponent(report.finalUrl)}`}
+                className="primary-button"
+                style={{ textDecoration: "none" }}
+              >
+                <Sparkles size={15} /> Send to Growth Engine
+              </Link>
               <button className="outline-button" onClick={copySummary}>
                 {copied ? <><Check size={15} /> Copied</> : <><Copy size={15} /> Copy summary</>}
               </button>
@@ -424,19 +434,13 @@ function LeadCapture({ report }: { report: AuditReport }) {
     setError("");
     setStatus("sending");
     try {
-      const res = await fetch("/api/leads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          email,
-          consent,
-          company,
-          url: report.sample ? "" : report.finalUrl,
-          score: report.sample ? null : report.score,
-        }),
+      await sendLeadToWebhook({
+        email,
+        consent,
+        company,
+        url: report.sample ? "" : report.finalUrl,
+        score: report.sample ? null : report.score,
       });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error ?? "Something went wrong. Please try again.");
       setStatus("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");

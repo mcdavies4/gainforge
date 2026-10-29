@@ -1,0 +1,8 @@
+{
+  "name": "GainForge",
+  "description": "An AI growth workspace that helps businesses discover opportunities, take action, and track what converts.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendLeadToWebhook, type LeadData } from "@/lib/webhook";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -6,12 +7,8 @@ export const dynamic = "force-dynamic";
 /**
  * Collects early-access signups from the auditor.
  *
- * Set LEAD_WEBHOOK_URL (for example a Make or Zapier webhook that appends a row
- * to a Google Sheet) and each signup is POSTed there as JSON. Without it, the
- * signup is only written to the server log, which is fine for testing but is
- * not a reliable place to keep leads.
+ * Uses sendLeadToWebhook to securely POST each signup to LEAD_WEBHOOK_URL (e.g. Make or Zapier).
  */
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const WINDOW_MS = 60 * 60 * 1000;
 const MAX_PER_WINDOW = 6;
 const hits = new Map<string, { count: number; resetAt: number }>();
@@ -44,48 +41,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  // Honeypot: real visitors never see or fill this field. Pretend success to bots.
-  if (typeof body.company === "string" && body.company.trim() !== "") {
-    return NextResponse.json({ ok: true });
-  }
-
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  if (!email || email.length > 254 || !EMAIL_RE.test(email)) {
-    return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
-  }
-  if (body.consent !== true) {
-    return NextResponse.json({ error: "Please tick the box so we know you're happy to hear from us." }, { status: 400 });
-  }
-
-  const payload = {
-    email,
-    website: typeof body.url === "string" ? body.url.slice(0, 300) : "",
-    score: typeof body.score === "number" && Number.isFinite(body.score) ? Math.round(body.score) : null,
-    source: "auditor",
-    consent: "Agreed to hear about personalised growth plans and GainForge updates",
-    submittedAt: new Date().toISOString(),
-  };
-
-  const webhook = process.env.LEAD_WEBHOOK_URL;
-  if (!webhook) {
-    console.info("[gainforge-lead]", JSON.stringify(payload));
-    return NextResponse.json({ ok: true });
-  }
-
   try {
-    const res = await fetch(webhook, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!res.ok) throw new Error(`Webhook responded ${res.status}`);
-    return NextResponse.json({ ok: true });
+    const result = await sendLeadToWebhook(body as LeadData);
+    return NextResponse.json(result);
   } catch (err) {
-    console.error("Lead webhook failed", err);
-    return NextResponse.json(
-      { error: "We couldn't save that just now. Please try again in a minute." },
-      { status: 502 }
-    );
+    const message = err instanceof Error ? err.message : "Something went wrong.";
+    const status = message.includes("valid email") || message.includes("tick the box") ? 400 : 502;
+    return NextResponse.json({ error: message }, { status });
   }
 }
