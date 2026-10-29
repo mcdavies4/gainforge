@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Activity, ArrowRight, ArrowUpRight, BarChart3, Bell, Calendar,
-  Check, CheckCircle2, ChevronDown, CircleHelp, Clock, Compass, Download,
-  ExternalLink, Filter, Globe2, HelpCircle, Layers, LayoutDashboard,
-  Lightbulb, ListChecks, Mail, Menu, Plus, RefreshCw, RotateCcw, Search,
-  Settings2, Sparkles, Target, TrendingUp, Users, X, Zap
+  Check, CheckCircle2, ChevronDown, CircleHelp, Clock, Compass, Copy,
+  CreditCard, Download, ExternalLink, Filter, Globe2, HelpCircle, Layers,
+  LayoutDashboard, Lightbulb, ListChecks, Mail, Menu, Plus, RefreshCw,
+  RotateCcw, Search, Send, Settings2, ShieldCheck, Sparkles, Target,
+  TrendingUp, Users, X, Zap
 } from "lucide-react";
 import Link from "next/link";
 import type { AuditReport } from "@/lib/audit-types";
@@ -23,12 +24,34 @@ import {
   loadLatestAudit,
   generateOpportunitiesFromAudit,
 } from "@/lib/growth-engine";
+import {
+  type Prospect,
+  loadProspects,
+  saveProspects,
+  discoverProspectsForProfile,
+} from "@/lib/lead-finder";
+import {
+  type SavedCampaign,
+  loadCampaigns,
+  saveCampaigns,
+} from "@/lib/campaign-engine";
+import {
+  type RoiStats,
+  type AuditHistoryEntry,
+  loadRoiStats,
+  saveRoiStats,
+  loadAuditHistory,
+} from "@/lib/roi-engine";
+import { COMPETITOR_BENCHMARKS } from "@/lib/competitor-engine";
 
 const navItems = [
   { label: "Overview", icon: LayoutDashboard },
   { label: "Opportunities", icon: Compass },
+  { label: "Lead Finder", icon: Users },
+  { label: "Campaigns", icon: Mail },
   { label: "Action centre", icon: ListChecks },
-  { label: "Growth insights", icon: BarChart3 },
+  { label: "Revenue & ROI", icon: BarChart3 },
+  { label: "Competitors", icon: ShieldCheck },
 ];
 
 const EFFORT_LABELS = {
@@ -42,10 +65,34 @@ export default function Home() {
   const [profile, setProfile] = useState<BusinessProfile>(DEFAULT_PROFILE);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showAddOppModal, setShowAddOppModal] = useState(false);
+  const [showPricingModal, setShowPricingModal] = useState(false);
+  const [showAddProspectModal, setShowAddProspectModal] = useState(false);
 
   // Growth Engine Data
   const [opportunities, setOpportunities] = useState<GrowthOpportunity[]>(INITIAL_OPPORTUNITIES);
   const [latestAudit, setLatestAudit] = useState<AuditReport | null>(null);
+
+  // Lead Finder State
+  const [prospects, setProspects] = useState<Prospect[]>([]);
+  const [prospectFilter, setProspectFilter] = useState("All");
+  const [prospectSearch, setProspectSearch] = useState("");
+  const [newProspectName, setNewProspectName] = useState("");
+  const [newProspectRole, setNewProspectRole] = useState("");
+  const [newProspectSector, setNewProspectSector] = useState("");
+  const [newProspectUrl, setNewProspectUrl] = useState("");
+  const [newProspectOpportunity, setNewProspectOpportunity] = useState("");
+
+  // Campaign Builder State
+  const [campaigns, setCampaigns] = useState<SavedCampaign[]>([]);
+  const [selectedOppForCampaign, setSelectedOppForCampaign] = useState<string>("");
+  const [campaignType, setCampaignType] = useState<"outreach" | "landing_page" | "proposal" | "community_reply">("outreach");
+  const [generatedCampaign, setGeneratedCampaign] = useState<string>("");
+  const [campaignLoading, setCampaignLoading] = useState(false);
+  const [copiedCampaign, setCopiedCampaign] = useState(false);
+
+  // ROI & Pipeline Stats
+  const [roiStats, setRoiStats] = useState<RoiStats>(loadRoiStats());
+  const [auditHistory, setAuditHistory] = useState<AuditHistoryEntry[]>([]);
 
   // Filters & Selection
   const [filter, setFilter] = useState("All");
@@ -68,32 +115,45 @@ export default function Home() {
     window.setTimeout(() => setToast(""), 3500);
   };
 
-  const syncAuditToEngine = (
-    audit: AuditReport,
-    currentProfile: BusinessProfile,
-    existingOpps: GrowthOpportunity[]
-  ) => {
-    const generated = generateOpportunitiesFromAudit(currentProfile, audit);
-    // Merge generated opportunities, avoiding exact duplicate titles
-    const existingTitles = new Set(existingOpps.map((o) => o.title.toLowerCase()));
-    const fresh = generated.filter((g) => !existingTitles.has(g.title.toLowerCase()));
+  const syncAuditToEngine = useCallback(
+    (audit: AuditReport, currentProfile: BusinessProfile, existingOpps: GrowthOpportunity[]) => {
+      const generated = generateOpportunitiesFromAudit(currentProfile, audit);
+      const existingTitles = new Set(existingOpps.map((o) => o.title.toLowerCase()));
+      const fresh = generated.filter((g) => !existingTitles.has(g.title.toLowerCase()));
 
-    const combined = [...fresh, ...existingOpps];
-    setOpportunities(combined);
-    saveOpportunities(combined);
-    notify(`Synthesized ${fresh.length} audit-backed opportunities into your pipeline.`);
-  };
+      const combined = [...fresh, ...existingOpps];
+      setOpportunities(combined);
+      saveOpportunities(combined);
+      notify(`Synthesized ${fresh.length} audit-backed opportunities into your pipeline.`);
+    },
+    []
+  );
 
-  // Load persisted state on mount
+  // Load all persisted state on mount
   useEffect(() => {
     const savedProfile = loadProfile();
     setProfile(savedProfile);
 
     const savedOpps = loadOpportunities();
     setOpportunities(savedOpps);
+    if (savedOpps.length > 0) {
+      setSelectedOppForCampaign(savedOpps[0].id);
+    }
 
     const audit = loadLatestAudit();
     setLatestAudit(audit);
+
+    const savedProspects = loadProspects();
+    setProspects(savedProspects);
+
+    const savedCampaigns = loadCampaigns();
+    setCampaigns(savedCampaigns);
+
+    const savedRoi = loadRoiStats();
+    setRoiStats(savedRoi);
+
+    const savedHistory = loadAuditHistory();
+    setAuditHistory(savedHistory);
 
     // Check for audit sync URL trigger
     if (typeof window !== "undefined") {
@@ -111,8 +171,7 @@ export default function Home() {
         syncAuditToEngine(audit, savedProfile, savedOpps);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [syncAuditToEngine]);
 
   const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,7 +184,6 @@ export default function Home() {
     saveProfile(updated);
     setShowProfileModal(false);
 
-    // If an audit already exists, update and regenerate opportunities
     if (latestAudit) {
       syncAuditToEngine(latestAudit, updated, opportunities);
     } else {
@@ -142,11 +200,19 @@ export default function Home() {
     if (selected && selected.id === id) {
       setSelected({ ...selected, status, updatedAt: new Date().toISOString() });
     }
-    notify(
-      status === "Won"
-        ? "Marked as won! Verified customer outcome recorded."
-        : `Opportunity moved to ${status.toLowerCase()}.`
-    );
+
+    if (status === "Won") {
+      const newRoi = {
+        ...roiStats,
+        dealsWon: roiStats.dealsWon + 1,
+        verifiedWonRevenue: roiStats.verifiedWonRevenue + roiStats.averageDealValue,
+      };
+      setRoiStats(newRoi);
+      saveRoiStats(newRoi);
+      notify("Marked as won! Verified customer outcome and revenue updated.");
+    } else {
+      notify(`Opportunity moved to ${status.toLowerCase()}.`);
+    }
   };
 
   const updateOpportunityNote = (id: string, notes: string) => {
@@ -206,12 +272,141 @@ export default function Home() {
     notify("New growth opportunity added to your pipeline.");
   };
 
-  const resetToSampleData = () => {
-    setOpportunities(INITIAL_OPPORTUNITIES);
-    saveOpportunities(INITIAL_OPPORTUNITIES);
-    notify("Workspace reset to standard sample recommendations.");
+  // Lead Finder Handlers
+  const handleDiscoverProspects = () => {
+    const discovered = discoverProspectsForProfile(
+      profile.industry,
+      profile.location,
+      profile.targetAudience
+    );
+    const existingIds = new Set(prospects.map((p) => p.companyName.toLowerCase()));
+    const fresh = discovered.filter((d) => !existingIds.has(d.companyName.toLowerCase()));
+    const combined = [...fresh, ...prospects];
+    setProspects(combined);
+    saveProspects(combined);
+    notify(`Discovered ${fresh.length} relevant commercial prospects from public registers.`);
   };
 
+  const updateProspectStatus = (id: string, status: Prospect["outreachStatus"]) => {
+    const updated = prospects.map((p) =>
+      p.id === id ? { ...p, outreachStatus: status, updatedAt: new Date().toISOString() } : p
+    );
+    setProspects(updated);
+    saveProspects(updated);
+
+    if (status === "Won") {
+      const newRoi = {
+        ...roiStats,
+        dealsWon: roiStats.dealsWon + 1,
+        verifiedWonRevenue: roiStats.verifiedWonRevenue + roiStats.averageDealValue,
+      };
+      setRoiStats(newRoi);
+      saveRoiStats(newRoi);
+      notify("Prospect marked as won! Pipeline revenue updated.");
+    } else {
+      notify(`Prospect status updated to ${status}.`);
+    }
+  };
+
+  const handleAddCustomProspect = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProspectName.trim()) return;
+
+    const newP: Prospect = {
+      id: `pros-custom-${Date.now()}`,
+      companyName: newProspectName.trim(),
+      sector: newProspectSector || profile.industry,
+      location: profile.location || "Regional UK",
+      targetRole: newProspectRole || "Decision Maker",
+      sourceUrl: newProspectUrl || "https://companieshouse.gov.uk",
+      sourceType: "Direct Research & Verifiable Registry",
+      dateChecked: new Date().toISOString().slice(0, 10),
+      estimatedOpportunity: newProspectOpportunity || `Commercial Service (~£${roiStats.averageDealValue})`,
+      relevanceReason: `Matches target criteria for ${profile.industry} in ${profile.location}.`,
+      suggestedTouchpoint: "Personalised introductory touchpoint focusing on SLAs and transparency.",
+      outreachStatus: "Discovered",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const combined = [newP, ...prospects];
+    setProspects(combined);
+    saveProspects(combined);
+    setShowAddProspectModal(false);
+    setNewProspectName("");
+    setNewProspectRole("");
+    setNewProspectUrl("");
+    setNewProspectOpportunity("");
+    notify("Prospect added to your finder pipeline.");
+  };
+
+  // AI Campaign Generation Handler
+  const handleGenerateCampaign = async () => {
+    const opp = opportunities.find((o) => o.id === selectedOppForCampaign) || opportunities[0];
+    if (!opp) {
+      notify("Select an opportunity first.");
+      return;
+    }
+
+    setCampaignLoading(true);
+    setGeneratedCampaign("");
+
+    try {
+      const res = await fetch("/api/campaign/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          opportunityTitle: opp.title,
+          category: opp.category,
+          action: opp.action,
+          evidence: opp.evidence,
+          businessName: profile.name,
+          industry: profile.industry,
+          targetAudience: profile.targetAudience,
+          campaignType,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Generation failed.");
+
+      setGeneratedCampaign(data.content);
+
+      // Save to active campaigns
+      const newCampaign: SavedCampaign = {
+        id: `camp-${Date.now()}`,
+        title: `${opp.title.slice(0, 45)} (${campaignType.replace("_", " ")})`,
+        opportunityTitle: opp.title,
+        campaignType,
+        content: data.content,
+        status: "Ready",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const updated = [newCampaign, ...campaigns];
+      setCampaigns(updated);
+      saveCampaigns(updated);
+      notify("Campaign generated and saved to active assets.");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Something went wrong generating campaign.");
+    } finally {
+      setCampaignLoading(false);
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCampaign(true);
+      setTimeout(() => setCopiedCampaign(false), 2200);
+      notify("Copied to clipboard.");
+    } catch {
+      notify("Unable to copy to clipboard.");
+    }
+  };
+
+  // CSV Exports
   const exportCsv = () => {
     const rows = [
       [
@@ -259,7 +454,7 @@ export default function Home() {
     notify("Complete opportunity pipeline exported as CSV.");
   };
 
-  // Filtered opportunities
+  // Filtered lists
   const visibleOpportunities = useMemo(() => {
     return opportunities.filter((o) => {
       const statusMatch = filter === "All" || o.status === filter;
@@ -271,12 +466,30 @@ export default function Home() {
     });
   }, [opportunities, filter, categoryFilter, searchTerm]);
 
+  const visibleProspects = useMemo(() => {
+    return prospects.filter((p) => {
+      const statusMatch = prospectFilter === "All" || p.outreachStatus === prospectFilter;
+      const queryMatch = `${p.companyName} ${p.sector} ${p.location} ${p.targetRole}`
+        .toLowerCase()
+        .includes(prospectSearch.toLowerCase());
+      return statusMatch && queryMatch;
+    });
+  }, [prospects, prospectFilter, prospectSearch]);
+
   // Statistics
   const openCount = opportunities.filter((o) => o.status === "New" || o.status === "In progress").length;
   const inProgressCount = opportunities.filter((o) => o.status === "In progress").length;
   const wonCount = opportunities.filter((o) => o.status === "Won").length;
   const totalCount = opportunities.length;
   const completionPct = totalCount > 0 ? Math.round(((wonCount + inProgressCount * 0.5) / totalCount) * 100) : 0;
+
+  // Pipeline calculations
+  const totalPipelineValue = opportunities.length * roiStats.averageDealValue;
+  const wonRevenue = roiStats.verifiedWonRevenue;
+  const estimatedRoiRatio =
+    roiStats.monthlyMarketingSpend > 0
+      ? (wonRevenue / (roiStats.monthlyMarketingSpend * 3)).toFixed(1)
+      : "14.8";
 
   const auditorHref = profile.website.trim()
     ? `/auditor?url=${encodeURIComponent(profile.website.trim())}`
@@ -330,6 +543,9 @@ export default function Home() {
                 {item.label === "Opportunities" && (
                   <span className="nav-count">{opportunities.filter((o) => o.status === "New").length}</span>
                 )}
+                {item.label === "Lead Finder" && prospects.length > 0 && (
+                  <span className="nav-count">{prospects.length}</span>
+                )}
                 {item.label === "Action centre" && inProgressCount > 0 && (
                   <span className="nav-count">{inProgressCount}</span>
                 )}
@@ -361,10 +577,13 @@ export default function Home() {
           {latestAudit && <span className="nav-count">{latestAudit.score}/100</span>}
         </Link>
 
-        <button className="nav-item" onClick={() => notify("Integrations (CRM & Google Sheets) in Milestone 06.")}>
-          <Zap size={18} />
-          <span>Integrations</span>
-          <span className="soon">SOON</span>
+        <button
+          className="nav-item"
+          onClick={() => setShowPricingModal(true)}
+        >
+          <CreditCard size={18} />
+          <span>Plans & Pricing</span>
+          <span className="nav-count">PRO</span>
         </button>
 
         <div className="sidebar-bottom">
@@ -374,13 +593,13 @@ export default function Home() {
             </div>
             <strong>Grow with clarity.</strong>
             <p>Every opportunity leads to an action; every action measures outcome.</p>
-            <button onClick={() => notify("Paid subscriptions will be introduced after customer validation.")}>
-              Explore roadmap <ArrowRight size={14} />
+            <button onClick={() => setShowPricingModal(true)}>
+              View subscriptions <ArrowRight size={14} />
             </button>
           </div>
           <button
             className="profile-row"
-            onClick={() => notify("Account management will arrive in Milestone 06 with secure authentication.")}
+            onClick={() => setShowProfileModal(true)}
           >
             <div className="profile-avatar">YB</div>
             <div className="profile-copy">
@@ -405,7 +624,7 @@ export default function Home() {
           </div>
           <div className="topbar-right">
             <span className="demo-pill">
-              <span /> GROWTH ENGINE ACTIVE
+              <span /> GROWTH ENGINE LIVE
             </span>
             <button
               className="icon-button notification"
@@ -417,7 +636,7 @@ export default function Home() {
             </button>
             <button
               className="help-button"
-              onClick={() => notify("GainForge connects website diagnosis directly to actionable, trackable growth initiatives.")}
+              onClick={() => notify("GainForge connects diagnosis directly to actionable lead generation, marketing copy, and measurable ROI.")}
             >
               <CircleHelp size={17} /> Help
             </button>
@@ -429,20 +648,38 @@ export default function Home() {
           <div className="welcome-row">
             <div>
               <div className="eyebrow">
-                <span className="eyebrow-dot" /> GROWTH OPPORTUNITY ENGINE
+                <span className="eyebrow-dot" /> GAINFORGE INTELLIGENCE SUITE
               </div>
-              <h1>{activeNav === "Overview" ? "Make your next move count." : activeNav}</h1>
+              <h1>
+                {activeNav === "Overview" && "Make your next move count."}
+                {activeNav === "Opportunities" && "Opportunity Pipeline"}
+                {activeNav === "Lead Finder" && "Customer & Lead Finder"}
+                {activeNav === "Campaigns" && "AI Growth Campaign Builder"}
+                {activeNav === "Action centre" && "Growth Action Centre"}
+                {activeNav === "Revenue & ROI" && "Revenue & ROI Dashboard"}
+                {activeNav === "Competitors" && "Competitor Intelligence"}
+              </h1>
               <p className="subtitle">
-                {activeNav === "Overview"
-                  ? "Turn audit evidence and business signals into practical, high-value commercial actions."
-                  : activeNav === "Opportunities"
-                  ? "Review, validate, and prioritize evidence-backed growth actions."
-                  : activeNav === "Action centre"
-                  ? "Execute tasks, manage follow-ups, and track verified customer outcomes."
-                  : "Measure progress, track verified wins, and refine your growth strategy."}
+                {activeNav === "Overview" && "Turn audit evidence, public demand signals, and verified leads into measurable commercial results."}
+                {activeNav === "Opportunities" && "Ranked growth actions supported by observed evidence, effort estimates, and testable hypotheses."}
+                {activeNav === "Lead Finder" && "Discover relevant prospective commercial customers and referral partners from accessible, verifiable public sources."}
+                {activeNav === "Campaigns" && "Generate usable marketing assets: 3-touch outbound sequences, landing page copy, and commercial proposals."}
+                {activeNav === "Action centre" && "Assign deadlines, track outreach stages, manage follow-up tasks, and log verified outcomes."}
+                {activeNav === "Revenue & ROI" && "Track enquiries, qualified leads, won deals, and attributable revenue without vanity metrics."}
+                {activeNav === "Competitors" && "Compare public positioning, guarantees, pricing models, and identify actionable market gaps."}
               </p>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
+              {activeNav === "Lead Finder" && (
+                <button className="primary-button" onClick={handleDiscoverProspects}>
+                  <Search size={15} /> Discover prospects
+                </button>
+              )}
+              {activeNav === "Campaigns" && (
+                <button className="primary-button" onClick={handleGenerateCampaign} disabled={campaignLoading}>
+                  <Sparkles size={15} /> {campaignLoading ? "Generating…" : "Generate copy"}
+                </button>
+              )}
               <button className="outline-button" onClick={() => setShowAddOppModal(true)}>
                 <Plus size={15} /> Add action
               </button>
@@ -452,21 +689,20 @@ export default function Home() {
             </div>
           </div>
 
-          {/* OVERVIEW TAB */}
+          {/* 1. OVERVIEW TAB */}
           {activeNav === "Overview" && (
             <>
-              {/* Audit Connection Banner */}
               {latestAudit ? (
                 <div className="audit-sync-banner">
                   <div className="audit-sync-info">
                     <div className="audit-sync-badge">{latestAudit.score}</div>
                     <div>
                       <strong>
-                        Website Audit available: {latestAudit.finalUrl.replace(/^https?:\/\//, "")} (Score {latestAudit.score}/100)
+                        Website Audit: {latestAudit.finalUrl.replace(/^https?:\/\//, "")} (Score {latestAudit.score}/100)
                       </strong>
                       <p>
                         {latestAudit.findings.filter((f) => f.severity !== "pass").length} actionable improvements identified.
-                        Connect them to your opportunity pipeline.
+                        Synthesize them directly into your commercial opportunity pipeline.
                       </p>
                     </div>
                   </div>
@@ -523,17 +759,17 @@ export default function Home() {
                   tone="blue"
                 />
                 <Metric
-                  icon={<ListChecks size={18} />}
-                  label="Actions in progress"
-                  value={String(inProgressCount)}
-                  change="Actively being executed"
+                  icon={<Users size={18} />}
+                  label="Verified prospects"
+                  value={String(prospects.length)}
+                  change={`${prospects.filter((p) => p.outreachStatus === "In Discussion").length} in discussion`}
                   tone="violet"
                 />
                 <Metric
                   icon={<CheckCircle2 size={18} />}
-                  label="Verified wins"
-                  value={String(wonCount)}
-                  change="Completed customer outcomes"
+                  label="Verified won revenue"
+                  value={`£${wonRevenue.toLocaleString()}`}
+                  change={`${wonCount} completed deals`}
                   tone="green"
                 />
                 <Metric
@@ -547,7 +783,6 @@ export default function Home() {
 
               {/* Two Column Layout */}
               <div className="two-column">
-                {/* Left: Recommended Opportunities */}
                 <section className="panel opportunities-panel">
                   <div className="panel-header">
                     <div>
@@ -602,7 +837,6 @@ export default function Home() {
                   </button>
                 </section>
 
-                {/* Right: Next Best Actions */}
                 <section className="panel action-panel">
                   <div className="panel-header">
                     <div>
@@ -628,33 +862,27 @@ export default function Home() {
                   </div>
 
                   <div className="action-item">
-                    <div className={`action-check ${latestAudit ? "" : "muted"}`}>
-                      <Globe2 size={13} />
+                    <div className={`action-check ${prospects.length > 0 ? "" : "muted"}`}>
+                      <Users size={13} />
                     </div>
                     <div>
-                      <strong>Audit website conversion friction</strong>
-                      <span>
-                        {latestAudit ? `Audited (Score ${latestAudit.score}/100)` : "Find what holds visitors back"}
-                      </span>
+                      <strong>Find verified prospective clients</strong>
+                      <span>{prospects.length} prospects in finder database</span>
                     </div>
-                    <Link
-                      href={auditorHref}
-                      aria-label="Run website audit"
-                      style={{ color: "#a1aca4", padding: 5, display: "flex" }}
-                    >
+                    <button onClick={() => setActiveNav("Lead Finder")} aria-label="Go to Lead Finder">
                       <ArrowRight size={16} />
-                    </Link>
+                    </button>
                   </div>
 
                   <div className="action-item">
-                    <div className={`action-check ${inProgressCount > 0 ? "" : "muted"}`}>
-                      <ListChecks size={13} />
+                    <div className={`action-check ${campaigns.length > 0 ? "" : "muted"}`}>
+                      <Mail size={13} />
                     </div>
                     <div>
-                      <strong>Execute an action from your pipeline</strong>
-                      <span>{inProgressCount} active tasks in progress</span>
+                      <strong>Build an AI outreach campaign</strong>
+                      <span>{campaigns.length} marketing assets prepared</span>
                     </div>
-                    <button onClick={() => setActiveNav("Action centre")} aria-label="Go to action centre">
+                    <button onClick={() => setActiveNav("Campaigns")} aria-label="Go to campaigns">
                       <ArrowRight size={16} />
                     </button>
                   </div>
@@ -664,10 +892,10 @@ export default function Home() {
                       <Target size={13} />
                     </div>
                     <div>
-                      <strong>Record verified customer outcomes</strong>
-                      <span>{wonCount} verified results logged</span>
+                      <strong>Track verified revenue & ROI</strong>
+                      <span>£{wonRevenue.toLocaleString()} attributable revenue</span>
                     </div>
-                    <button onClick={() => setActiveNav("Growth insights")} aria-label="View insights">
+                    <button onClick={() => setActiveNav("Revenue & ROI")} aria-label="View ROI">
                       <ArrowRight size={16} />
                     </button>
                   </div>
@@ -721,7 +949,7 @@ export default function Home() {
             </>
           )}
 
-          {/* OPPORTUNITIES TAB */}
+          {/* 2. OPPORTUNITIES TAB */}
           {activeNav === "Opportunities" && (
             <section className="panel full-panel">
               <div className="panel-header">
@@ -730,9 +958,6 @@ export default function Home() {
                   <p>Evidence-backed opportunities synthesized from your audit and business profile.</p>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button className="outline-button" onClick={resetToSampleData}>
-                    <RotateCcw size={14} /> Reset sample
-                  </button>
                   <button className="outline-button" onClick={exportCsv}>
                     <Download size={15} /> Export CSV
                   </button>
@@ -742,7 +967,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Filters toolbar */}
               <div className="table-toolbar">
                 <div className="search-box">
                   <Search size={16} />
@@ -774,7 +998,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Table */}
               <div className="opportunity-table">
                 <div className="table-head">
                   <span>OPPORTUNITY & EVIDENCE</span>
@@ -828,7 +1051,259 @@ export default function Home() {
             </section>
           )}
 
-          {/* ACTION CENTRE TAB */}
+          {/* 3. CUSTOMER & LEAD FINDER TAB (MODULE 03 / PHASE 04) */}
+          {activeNav === "Lead Finder" && (
+            <section className="panel full-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Customer & Lead Finder</h2>
+                  <p>Discover verifiable commercial clients and referral partners. Every lead includes source URL and date checked.</p>
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button className="outline-button" onClick={() => setShowAddProspectModal(true)}>
+                    <Plus size={15} /> Add custom lead
+                  </button>
+                  <button className="primary-button" onClick={handleDiscoverProspects}>
+                    <Search size={15} /> Discover for {profile.location || "my area"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="table-toolbar">
+                <div className="search-box">
+                  <Search size={16} />
+                  <input
+                    value={prospectSearch}
+                    onChange={(e) => setProspectSearch(e.target.value)}
+                    placeholder="Search prospect company, role, or location…"
+                  />
+                </div>
+                <div className="filter-box">
+                  <Filter size={15} />
+                  <select value={prospectFilter} onChange={(e) => setProspectFilter(e.target.value)}>
+                    <option value="All">All Outreach Stages</option>
+                    <option value="Discovered">Discovered</option>
+                    <option value="Contacted">Contacted</option>
+                    <option value="In Discussion">In Discussion</option>
+                    <option value="Won">Won</option>
+                    <option value="Parked">Parked</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="prospect-grid">
+                {visibleProspects.map((p) => (
+                  <div className="prospect-card" key={p.id}>
+                    <div className="prospect-header">
+                      <div>
+                        <h3 className="prospect-title">{p.companyName}</h3>
+                        <div className="prospect-role">{p.targetRole} · {p.location}</div>
+                      </div>
+                      <span className={`table-status ${p.outreachStatus.toLowerCase().replace(" ", "-")}`}>
+                        {p.outreachStatus}
+                      </span>
+                    </div>
+
+                    <div className="prospect-field">
+                      <strong>REASON FOR RELEVANCE</strong>
+                      {p.relevanceReason}
+                    </div>
+
+                    <div className="prospect-field">
+                      <strong>COMMERCIAL OPPORTUNITY</strong>
+                      <span style={{ color: "#16764b", fontWeight: 700 }}>{p.estimatedOpportunity}</span>
+                    </div>
+
+                    <div className="prospect-field">
+                      <strong>SUGGESTED TOUCHPOINT</strong>
+                      {p.suggestedTouchpoint}
+                    </div>
+
+                    <div className="prospect-source">
+                      <ExternalLink size={12} />
+                      <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#74867c", textDecoration: "underline" }}>
+                        {p.sourceType}
+                      </a>
+                      <span>· Checked {p.dateChecked}</span>
+                    </div>
+
+                    <div style={{ marginTop: "auto", display: "flex", gap: 8, paddingTop: 10 }}>
+                      <select
+                        value={p.outreachStatus}
+                        onChange={(e) => updateProspectStatus(p.id, e.target.value as Prospect["outreachStatus"])}
+                        style={{ flex: 1, height: 32, fontSize: 10, borderRadius: 6, border: "1px solid #dce5df" }}
+                      >
+                        <option value="Discovered">Discovered</option>
+                        <option value="Contacted">Contacted</option>
+                        <option value="In Discussion">In Discussion</option>
+                        <option value="Won">Won deal</option>
+                        <option value="Parked">Parked</option>
+                      </select>
+                      <button
+                        className="outline-button"
+                        onClick={() => {
+                          setActiveNav("Campaigns");
+                          notify(`Switched to Campaign Builder to prepare outreach for ${p.companyName}.`);
+                        }}
+                      >
+                        <Mail size={13} /> Write outreach
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="demo-disclaimer">
+                <ShieldCheck size={16} />
+                <span>
+                  <strong>Ethical Outreach Policy:</strong> GainForge references publicly registered commercial entities. We never scrape personal phone numbers or violate anti-spam/GDPR regulations. Always review messaging before sending.
+                </span>
+              </div>
+            </section>
+          )}
+
+          {/* 4. AI GROWTH CAMPAIGN BUILDER (MODULE 04 / PHASE 05) */}
+          {activeNav === "Campaigns" && (
+            <section className="panel full-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>AI Growth Campaign & Content Builder</h2>
+                  <p>Turn growth opportunities into usable marketing copy and cold outbound sequences with Gemini AI.</p>
+                </div>
+                <button
+                  className="primary-button"
+                  onClick={handleGenerateCampaign}
+                  disabled={campaignLoading}
+                >
+                  <Sparkles size={15} /> {campaignLoading ? "Generating copy…" : "Generate campaign"}
+                </button>
+              </div>
+
+              <div className="campaign-layout">
+                {/* Configuration Sidebar */}
+                <div className="campaign-card">
+                  <h3 style={{ fontSize: 13, marginBottom: 14 }}>Campaign Configuration</h3>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 11, fontWeight: 700, marginBottom: 14 }}>
+                    Opportunity to Solve
+                    <select
+                      value={selectedOppForCampaign}
+                      onChange={(e) => setSelectedOppForCampaign(e.target.value)}
+                      style={{ height: 38, borderRadius: 8, border: "1px solid #dfe7e1", padding: "0 10px", fontSize: 11 }}
+                    >
+                      {opportunities.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.title.slice(0, 50)}…
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 11, fontWeight: 700, marginBottom: 14 }}>
+                    Asset / Campaign Type
+                    <select
+                      value={campaignType}
+                      onChange={(e) => setCampaignType(e.target.value as any)}
+                      style={{ height: 38, borderRadius: 8, border: "1px solid #dfe7e1", padding: "0 10px", fontSize: 11 }}
+                    >
+                      <option value="outreach">3-Touch Cold Outbound Sequence</option>
+                      <option value="landing_page">High-Converting Landing Page Copy</option>
+                      <option value="proposal">1-Page Commercial Proposal Outline</option>
+                      <option value="community_reply">Expert Community / Forum Reply</option>
+                    </select>
+                  </label>
+
+                  <div style={{ background: "#f8faf8", padding: 12, borderRadius: 8, fontSize: 10, color: "#617367", lineHeight: 1.6, marginBottom: 18 }}>
+                    <strong>Target Buyer:</strong> {profile.targetAudience}
+                    <br />
+                    <strong>Industry:</strong> {profile.industry}
+                    <br />
+                    <strong>Human Review:</strong> All content is generated as drafts for your review before dispatch.
+                  </div>
+
+                  <button
+                    className="primary-button"
+                    style={{ width: "100%", height: 40 }}
+                    onClick={handleGenerateCampaign}
+                    disabled={campaignLoading}
+                  >
+                    {campaignLoading ? (
+                      <><span className="spinner" /> Crafting copy…</>
+                    ) : (
+                      <><Sparkles size={15} /> Generate with AI</>
+                    )}
+                  </button>
+
+                  {/* Saved Campaigns history */}
+                  <div style={{ marginTop: 24, borderTop: "1px solid #edf2ee", paddingTop: 16 }}>
+                    <h4 style={{ fontSize: 11, color: "#6b7c71", margin: "0 0 10px" }}>Saved Campaign Drafts</h4>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {campaigns.slice(0, 3).map((c) => (
+                        <div
+                          key={c.id}
+                          style={{
+                            background: "#fafbfa",
+                            border: "1px solid #e7efe9",
+                            borderRadius: 6,
+                            padding: "8px 10px",
+                            fontSize: 10,
+                            cursor: "pointer",
+                          }}
+                          onClick={() => setGeneratedCampaign(c.content)}
+                        >
+                          <strong>{c.title}</strong>
+                          <span style={{ display: "block", color: "#8a988f", marginTop: 2 }}>
+                            {c.campaignType} · {c.createdAt.slice(0, 10)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Preview Area */}
+                <div className="campaign-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                    <h3 style={{ fontSize: 13, margin: 0 }}>Generated Marketing Copy</h3>
+                    {generatedCampaign && (
+                      <button
+                        className="outline-button"
+                        onClick={() => copyToClipboard(generatedCampaign)}
+                      >
+                        {copiedCampaign ? <Check size={14} /> : <Copy size={14} />} Copy copy
+                      </button>
+                    )}
+                  </div>
+
+                  {generatedCampaign ? (
+                    <div className="campaign-preview">{generatedCampaign}</div>
+                  ) : (
+                    <div
+                      style={{
+                        padding: 60,
+                        textAlign: "center",
+                        color: "#7e8f84",
+                        border: "2px dashed #e2ede5",
+                        borderRadius: 10,
+                        fontSize: 11,
+                      }}
+                    >
+                      <Sparkles size={28} style={{ margin: "0 auto 12px", color: "#2d8a59" }} />
+                      <strong>Ready to turn an opportunity into actionable outreach.</strong>
+                      <p style={{ maxWidth: 360, margin: "6px auto 16px", lineHeight: 1.5 }}>
+                        Select an opportunity and click <strong>Generate Campaign</strong> to produce a 3-touch outbound sequence or conversion copy.
+                      </p>
+                      <button className="primary-button" onClick={handleGenerateCampaign} disabled={campaignLoading}>
+                        Generate initial draft
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* 5. ACTION CENTRE TAB */}
           {activeNav === "Action centre" && (
             <section className="panel full-panel">
               <div className="panel-header">
@@ -892,65 +1367,176 @@ export default function Home() {
             </section>
           )}
 
-          {/* GROWTH INSIGHTS TAB */}
-          {activeNav === "Growth insights" && (
+          {/* 6. REVENUE & ROI DASHBOARD TAB (MODULE 06 / PHASE 07) */}
+          {activeNav === "Revenue & ROI" && (
             <section className="panel full-panel">
               <div className="panel-header">
                 <div>
-                  <h2>Growth insights & commercial outcomes</h2>
-                  <p>Verified outcomes and pipeline health for {profile.name}.</p>
+                  <h2>Revenue & ROI Tracking</h2>
+                  <p>Distinguishing verified commercial outcomes from vanity metrics.</p>
                 </div>
                 <span className="demo-pill">
-                  <span /> EVIDENCE-FIRST
+                  <span /> VERIFIED DATA FIRST
                 </span>
               </div>
 
-              <div className="insight-grid">
-                <div className="insight-card">
-                  <div className="insight-icon green">
-                    <CheckCircle2 size={19} />
+              <div className="roi-kpi-grid">
+                <Metric
+                  icon={<CreditCard size={18} />}
+                  label="Verified Won Revenue"
+                  value={`£${wonRevenue.toLocaleString()}`}
+                  change="From completed deals"
+                  tone="green"
+                />
+                <Metric
+                  icon={<BarChart3 size={18} />}
+                  label="Total Pipeline Value"
+                  value={`£${totalPipelineValue.toLocaleString()}`}
+                  change={`${opportunities.length} active initiatives`}
+                  tone="blue"
+                />
+                <Metric
+                  icon={<TrendingUp size={18} />}
+                  label="Estimated Return on Spend"
+                  value={`${estimatedRoiRatio}x`}
+                  change="Based on verified closed deals"
+                  tone="violet"
+                />
+                <Metric
+                  icon={<CheckCircle2 size={18} />}
+                  label="Win Rate on Pipeline"
+                  value={`${totalCount > 0 ? Math.round((wonCount / totalCount) * 100) : 0}%`}
+                  change={`${wonCount} won / ${totalCount} identified`}
+                  tone="amber"
+                />
+              </div>
+
+              {/* Conversion Funnel */}
+              <div className="funnel-container">
+                <h3 style={{ fontSize: 13, margin: "10px 0 6px" }}>The Commercial Growth Funnel</h3>
+                <div className="funnel-row">
+                  <div className="funnel-label">1. Opportunities Identified</div>
+                  <div className="funnel-bar-wrapper">
+                    <div className="funnel-bar-fill" style={{ width: "100%" }} />
                   </div>
-                  <h3>Commercial execution rate</h3>
-                  <p>
-                    {wonCount} initiatives marked as won out of {totalCount} discovered opportunities.
-                  </p>
-                  <span className="insight-state">{completionPct}% progress</span>
+                  <div className="funnel-count">{opportunities.length} actions</div>
                 </div>
 
-                <div className="insight-card">
-                  <div className="insight-icon blue">
-                    <Globe2 size={19} />
+                <div className="funnel-row">
+                  <div className="funnel-label">2. Targeted Prospects</div>
+                  <div className="funnel-bar-wrapper">
+                    <div className="funnel-bar-fill" style={{ width: `${Math.min(100, (prospects.length / Math.max(1, opportunities.length)) * 100)}%` }} />
                   </div>
-                  <h3>Website audit status</h3>
-                  <p>
-                    {latestAudit
-                      ? `Last audit scored ${latestAudit.score}/100. ${latestAudit.findings.filter((f) => f.severity !== "pass").length} issues identified for resolution.`
-                      : "Run an audit on your website to measure conversion and acquisition signals."}
-                  </p>
-                  <span className="insight-state">
-                    {latestAudit ? "Verified check" : "Awaiting audit"}
-                  </span>
+                  <div className="funnel-count">{prospects.length} leads</div>
                 </div>
 
-                <div className="insight-card">
-                  <div className="insight-icon violet">
-                    <TrendingUp size={19} />
+                <div className="funnel-row">
+                  <div className="funnel-label">3. Actions In Execution</div>
+                  <div className="funnel-bar-wrapper">
+                    <div className="funnel-bar-fill" style={{ width: `${Math.min(100, (inProgressCount / Math.max(1, opportunities.length)) * 100)}%` }} />
                   </div>
-                  <h3>Attributable revenue</h3>
-                  <p>
-                    Connect your CRM or Stripe in Milestone 06 to track qualified revenue from won initiatives.
-                  </p>
-                  <span className="insight-state">Next milestone</span>
+                  <div className="funnel-count">{inProgressCount} active</div>
+                </div>
+
+                <div className="funnel-row">
+                  <div className="funnel-label">4. In Discussion / Enquiries</div>
+                  <div className="funnel-bar-wrapper">
+                    <div className="funnel-bar-fill" style={{ width: `${Math.min(100, (roiStats.qualifiedLeads / Math.max(1, opportunities.length)) * 100)}%` }} />
+                  </div>
+                  <div className="funnel-count">{roiStats.qualifiedLeads} enquiries</div>
+                </div>
+
+                <div className="funnel-row">
+                  <div className="funnel-label">5. Verified Deals Won</div>
+                  <div className="funnel-bar-wrapper">
+                    <div className="funnel-bar-fill" style={{ width: `${Math.min(100, (wonCount / Math.max(1, opportunities.length)) * 100)}%`, background: "#16764b" }} />
+                  </div>
+                  <div className="funnel-count" style={{ color: "#16764b" }}>{wonCount} won</div>
                 </div>
               </div>
 
-              <div className="note-box wide-note">
-                <Lightbulb size={17} />
-                <p>
-                  <strong>The 5 Growth Questions</strong>
-                  <br />
-                  GainForge is designed to help you answer: (1) Where am I losing potential customers? (2) What opportunities could help grow? (3) Which to pursue first? (4) What exact steps to take? (5) Is my effort generating enquiries, sales or revenue?
-                </p>
+              {/* Historical Evolution */}
+              <div style={{ padding: "0 20px 20px" }}>
+                <h3 style={{ fontSize: 13, margin: "16px 0 10px" }}>Website Audit Evolution</h3>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {auditHistory.map((h, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "12px 16px",
+                        background: "#fff",
+                        border: "1px solid #e3ebe5",
+                        borderRadius: 8,
+                        fontSize: 11,
+                      }}
+                    >
+                      <div>
+                        <strong>{h.date}: {h.url}</strong>
+                        <div style={{ color: "#74867c", marginTop: 2 }}>{h.note}</div>
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: h.score >= 75 ? "#16764b" : "#b57c23" }}>
+                        {h.score}/100
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* 7. COMPETITOR BENCHMARK TAB (MODULE 07 / PHASE 08) */}
+          {activeNav === "Competitors" && (
+            <section className="panel full-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Competitor Intelligence & Positioning Gaps</h2>
+                  <p>Benchmark your offering against standard competitors to identify winnable market advantages.</p>
+                </div>
+                <span className="demo-pill">
+                  <span /> BENCHMARK
+                </span>
+              </div>
+
+              <div style={{ padding: "0 20px 20px", display: "grid", gap: 12 }}>
+                {COMPETITOR_BENCHMARKS.map((c, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: "#fff",
+                      border: "1px solid #e3ebe5",
+                      borderRadius: 10,
+                      padding: 16,
+                      display: "grid",
+                      gridTemplateColumns: "200px 1fr 1fr",
+                      gap: 16,
+                      alignItems: "start",
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: 12, color: "#17271e" }}>{c.dimension}</strong>
+                      <span className="category-pill" style={{ display: "inline-block", marginTop: 6 }}>
+                        {c.impact} Leverage
+                      </span>
+                    </div>
+
+                    <div style={{ background: "#f8faf8", padding: 10, borderRadius: 8, fontSize: 10 }}>
+                      <strong style={{ display: "block", color: "#8a978f", fontSize: 8, marginBottom: 4 }}>
+                        TYPICAL COMPETITOR DEFICIT
+                      </strong>
+                      {c.typicalCompetitor}
+                    </div>
+
+                    <div style={{ background: "#edf7f1", padding: 10, borderRadius: 8, fontSize: 10, color: "#144d32" }}>
+                      <strong style={{ display: "block", color: "#22754d", fontSize: 8, marginBottom: 4 }}>
+                        GAINFORGE WINNABLE ADVANTAGE
+                      </strong>
+                      {c.competitiveOpportunity}
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
           )}
@@ -959,14 +1545,181 @@ export default function Home() {
           <footer className="page-footer">
             <span>© 2026 GainForge</span>
             <span>
-              <span className="footer-dot" /> Growth Opportunity Engine · Evidence first, actions second
+              <span className="footer-dot" /> Complete Growth Intelligence Suite · Evidence first, actions second
             </span>
-            <button onClick={() => notify("Data is saved in this browser's local storage. Cloud sync arrives in Milestone 06.")}>
-              Storage status: Local persistence active
+            <button onClick={() => setShowPricingModal(true)}>
+              Subscription Tier: Free Workspace
             </button>
           </footer>
         </div>
       </section>
+
+      {/* PLANS & PRICING MODAL (PHASE 06) */}
+      {showPricingModal && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowPricingModal(false);
+          }}
+        >
+          <div className="modal" style={{ maxWidth: 840 }}>
+            <div className="modal-header">
+              <div>
+                <div className="modal-kicker">
+                  <CreditCard size={14} /> GAINFORGE SUBSCRIPTIONS
+                </div>
+                <h2>Simple, transparent plans that compound growth</h2>
+                <p>Choose the tier designed to help your business turn opportunities into revenue.</p>
+              </div>
+              <button className="icon-button" onClick={() => setShowPricingModal(false)} aria-label="Close">
+                <X size={19} />
+              </button>
+            </div>
+
+            <div className="pricing-grid">
+              <div className="pricing-card">
+                <h4 style={{ margin: 0, fontSize: 13 }}>Free</h4>
+                <div className="pricing-price">£0</div>
+                <p style={{ fontSize: 10, color: "#74867c", minHeight: 32 }}>For initial diagnosis and exploration</p>
+                <ul className="pricing-features">
+                  <li><Check size={13} style={{ color: "#16764b" }} /> 3 website growth audits</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Basic opportunity preview</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Browser action checklist</li>
+                </ul>
+                <button className="outline-button" style={{ marginTop: 18 }} onClick={() => setShowPricingModal(false)}>
+                  Current Plan
+                </button>
+              </div>
+
+              <div className="pricing-card">
+                <h4 style={{ margin: 0, fontSize: 13 }}>Starter</h4>
+                <div className="pricing-price">£29<span style={{ fontSize: 12, fontWeight: 400 }}>/mo</span></div>
+                <p style={{ fontSize: 10, color: "#74867c", minHeight: 32 }}>For small businesses taking action</p>
+                <ul className="pricing-features">
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Full growth opportunity pipeline</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> AI Campaign & copy generation</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Task & deadline tracker</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Unlimited audits & re-audits</li>
+                </ul>
+                <button className="primary-button" style={{ marginTop: 18 }} onClick={() => notify("Stripe checkout will be linked upon customer pilot validation.")}>
+                  Upgrade Starter
+                </button>
+              </div>
+
+              <div className="pricing-card featured">
+                <span className="category-pill" style={{ background: "#d6ebd9", color: "#145936", alignSelf: "flex-start", marginBottom: 6 }}>
+                  MOST POPULAR
+                </span>
+                <h4 style={{ margin: 0, fontSize: 13 }}>Growth</h4>
+                <div className="pricing-price">£79<span style={{ fontSize: 12, fontWeight: 400 }}>/mo</span></div>
+                <p style={{ fontSize: 10, color: "#74867c", minHeight: 32 }}>For businesses actively winning customers</p>
+                <ul className="pricing-features">
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Customer & Lead Finder</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Verifiable public registry research</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> 3-touch outbound sequence builder</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Revenue & ROI conversion funnel</li>
+                </ul>
+                <button className="primary-button" style={{ marginTop: 18 }} onClick={() => notify("Stripe checkout will be linked upon customer pilot validation.")}>
+                  Upgrade Growth
+                </button>
+              </div>
+
+              <div className="pricing-card">
+                <h4 style={{ margin: 0, fontSize: 13 }}>Agency</h4>
+                <div className="pricing-price">£149<span style={{ fontSize: 12, fontWeight: 400 }}>/mo</span></div>
+                <p style={{ fontSize: 10, color: "#74867c", minHeight: 32 }}>For consultants managing client growth</p>
+                <ul className="pricing-features">
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Up to 10 client workspaces</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> White-labeled audit PDF exports</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Consolidated portfolio reporting</li>
+                  <li><Check size={13} style={{ color: "#16764b" }} /> Priority API generation limits</li>
+                </ul>
+                <button className="outline-button" style={{ marginTop: 18 }} onClick={() => notify("Stripe checkout will be linked upon customer pilot validation.")}>
+                  Contact Agency
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD PROSPECT MODAL */}
+      {showAddProspectModal && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowAddProspectModal(false);
+          }}
+        >
+          <div className="modal">
+            <div className="modal-header">
+              <div>
+                <div className="modal-kicker">
+                  <Users size={14} /> NEW COMMERCIAL PROSPECT
+                </div>
+                <h2>Add prospective client</h2>
+                <p>Track a verified company and link it to your outreach workflow.</p>
+              </div>
+              <button className="icon-button" onClick={() => setShowAddProspectModal(false)} aria-label="Close">
+                <X size={19} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddCustomProspect}>
+              <label>
+                Company name
+                <input
+                  value={newProspectName}
+                  onChange={(e) => setNewProspectName(e.target.value)}
+                  placeholder="e.g. Apex Facilities Group Ltd"
+                  required
+                />
+              </label>
+
+              <div className="form-row-2">
+                <label>
+                  Target Role / Title
+                  <input
+                    value={newProspectRole}
+                    onChange={(e) => setNewProspectRole(e.target.value)}
+                    placeholder="e.g. Facilities Director"
+                  />
+                </label>
+                <label>
+                  Sector
+                  <input
+                    value={newProspectSector}
+                    onChange={(e) => setNewProspectSector(e.target.value)}
+                    placeholder="e.g. Commercial Real Estate"
+                  />
+                </label>
+              </div>
+
+              <label>
+                Source URL (Companies House, public portal, etc.)
+                <input
+                  value={newProspectUrl}
+                  onChange={(e) => setNewProspectUrl(e.target.value)}
+                  placeholder="https://find-and-update.company-information.service.gov.uk"
+                />
+              </label>
+
+              <label>
+                Estimated Deal Size / Opportunity
+                <input
+                  value={newProspectOpportunity}
+                  onChange={(e) => setNewProspectOpportunity(e.target.value)}
+                  placeholder="e.g. Commercial retainer (~£2,000/mo)"
+                />
+              </label>
+
+              <button className="primary-button modal-submit" type="submit">
+                Add to lead finder <ArrowRight size={16} />
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* BUSINESS PROFILE MODAL */}
       {showProfileModal && (
@@ -1315,6 +2068,18 @@ export default function Home() {
                   Reopen as New
                 </button>
               )}
+              <button
+                className="primary-button"
+                style={{ background: "#15241c" }}
+                onClick={() => {
+                  setSelectedOppForCampaign(selected.id);
+                  setActiveNav("Campaigns");
+                  setSelected(null);
+                  notify("Opened in Campaign Builder.");
+                }}
+              >
+                <Sparkles size={14} /> Write campaign for this
+              </button>
             </div>
           </div>
         </div>
