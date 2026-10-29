@@ -57,5 +57,76 @@
 .comparison-table-row{display:grid;grid-template-columns:140px 1fr 1fr;gap:12px;padding:9px 0;border-bottom:1px solid #edf1ee;font-size:10px}
 @media(max-width:850px){.competitor-grid-3{grid-template-columns:1fr}.comparison-table-row{grid-template-columns:1fr}}
 
+/* Workspace Switcher Popover */
+.workspace-dropdown-wrapper{position:relative}
+.workspace-trigger-btn{width:100%;display:flex;align-items:center;gap:9px;padding:9px 10px;border:1px solid var(--line);border-radius:12px;margin-bottom:22px;background:#fff;text-align:left;transition:border-color .15s}
+.workspace-trigger-btn:hover{border-color:#b9d8c4}
+.workspace-dropdown-menu{position:absolute;top:calc(100% - 14px);left:0;right:0;background:#fff;border:1px solid #d8e5dc;border-radius:12px;box-shadow:0 12px 36px rgba(18,46,31,0.14);z-index:40;padding:8px;display:grid;gap:4px}
+.workspace-item{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:8px;border:0;background:transparent;width:100%;text-align:left;font-size:11px;color:#24362b}
+.workspace-item:hover{background:#f1f7f3}
+.workspace-item.active{background:#e7f5ec;color:#13623d;font-weight:700}
+.workspace-divider{height:1px;background:#edf2ee;margin:4px 0}
+.workspace-new-btn{display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:8px;border:0;background:transparent;width:100%;color:#176b45;font-size:11px;font-weight:700}
+.workspace-new-btn:hover{background:#edf7f1}
+
+/* Smart Growth & Follow-up Alerts */
+.smart-alerts-container{display:grid;gap:10px;margin-bottom:22px}
+.smart-alert-card{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-radius:10px;background:#fbfbf8;border:1px solid #ede8d8;color:#3b3f3b}
+.smart-alert-card.urgent{background:#fdf6f0;border-color:#f8dfcc}
+.smart-alert-card.growth{background:#f0f9f3;border-color:#d2eedc}
+.smart-alert-icon{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex-shrink:0;font-size:12px}
+.smart-alert-card.urgent .smart-alert-icon{background:#fbe7d5;color:#b25816}
+.smart-alert-card.growth .smart-alert-icon{background:#daf2e3;color:#187348}
+.smart-alert-body{flex:1;min-width:0}
+.smart-alert-body strong{display:block;font-size:11px;font-weight:700;color:#1a2b21}
+.smart-alert-body p{margin:3px 0 0;font-size:10px;line-height:1.5;color:#6b7970}
+.smart-alert-action{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#176b45;background:none;border:none;padding:0;margin-top:5px}
+
+/* Email Client Preview & Sender */
+.email-client-frame{border:1px solid #dce8df;border-radius:12px;background:#fff;box-shadow:0 4px 20px rgba(19,45,30,0.04);overflow:hidden}
+.email-client-header-bar{background:#f4f7f5;border-bottom:1px solid #e1ece4;padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
+.mac-dots{display:flex;align-items:center;gap:6px}
+.mac-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.mac-dot.red{background:#f56565}
+.mac-dot.yellow{background:#ed8936}
+.mac-dot.green{background:#48bb78}
+.email-client-meta{padding:12px 16px;border-bottom:1px solid #edf2ee;display:grid;gap:8px;font-size:11px}
+.email-meta-row{display:flex;align-items:center;gap:10px}
+.email-meta-label{width:65px;font-size:10px;font-weight:700;color:#78887e;text-transform:uppercase;letter-spacing:0.5px}
+.email-meta-input{flex:1;font-size:11px;color:#18281e;background:transparent;border:0;outline:0}
+.email-tag-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:#eef7f2;color:#186c46;font-size:10px;font-weight:600}
+.email-body-editor{padding:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.7;color:#24362b;min-height:220px;white-space:pre-wrap}
+.email-variable-token{background:#dcf2e3;color:#0d5934;padding:1px 5px;border-radius:4px;font-family:monospace;font-weight:700;font-size:10px}
+.email-actions-bar{padding:10px 16px;background:#fafcfb;border-top:1px solid #edf2ee;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+/* Executive Growth Brief (1-Page Report) */
+.brief-modal{width:min(100%,820px);max-height:94vh;overflow-y:auto;background:#fff;border-radius:16px;padding:32px 36px;box-shadow:0 30px 90px rgba(10,35,22,0.22)}
+.brief-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #16764b;padding-bottom:18px;margin-bottom:24px}
+.brief-brand-tag{display:inline-flex;align-items:center;gap:7px;color:#16764b;font-weight:800;font-size:11px;letter-spacing:1px;text-transform:uppercase}
+.brief-title{font-family:Manrope,sans-serif;font-size:24px;font-weight:800;letter-spacing:-0.7px;margin:6px 0 2px;color:#15261d}
+.brief-sub{font-size:12px;color:#67776d}
+.brief-meta-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+.brief-meta-item{background:#f6faf7;border:1px solid #e1ede5;border-radius:9px;padding:12px}
+.brief-meta-item small{display:block;font-size:9px;font-weight:700;color:#6d8074;text-transform:uppercase;letter-spacing:0.5px}
+.brief-meta-item strong{display:block;font-family:Manrope,sans-serif;font-size:18px;color:#16271e;margin-top:4px}
+.brief-section{margin-bottom:24px}
+.brief-section-title{font-family:Manrope,sans-serif;font-size:13px;font-weight:800;letter-spacing:0.4px;color:#192b20;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.brief-opp-table{width:100%;border-collapse:collapse;font-size:11px}
+.brief-opp-table th{background:#f3f7f4;text-align:left;padding:8px 10px;font-size:9px;letter-spacing:0.5px;color:#55665b;border-bottom:1px solid #dce8df}
+.brief-opp-table td{padding:10px;border-bottom:1px solid #edf2ee;vertical-align:top;line-height:1.5}
+.brief-calendar-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.brief-cal-column{background:#fafcfa;border:1px solid #e2ebe4;border-radius:8px;padding:12px}
+.brief-cal-column h4{margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:0.5px;color:#196a43;text-transform:uppercase}
+.brief-cal-column ul{margin:0;padding-left:14px;display:grid;gap:6px;font-size:10px;color:#495a4f;line-height:1.4}
+.brief-actions-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:24px;border-top:1px solid #edf2ee;padding-top:18px}
+
+/* Print Stylesheet for 1-Page Growth Brief */
+@media print {
+  body{background:#fff !important;color:#000 !important}
+  .sidebar, .topbar, .toast, .modal-backdrop > *:not(.brief-modal), .brief-actions-bar{display:none !important}
+  .modal-backdrop{position:static !important;background:none !important;padding:0 !important}
+  .brief-modal{width:100% !important;max-height:none !important;box-shadow:none !important;padding:0 !important;border-radius:0 !important}
+}
+
 
 

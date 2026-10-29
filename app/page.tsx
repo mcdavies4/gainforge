@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
-  Activity, ArrowRight, ArrowUpRight, BarChart3, Bell, Calendar,
+  Activity, ArrowRight, ArrowUpRight, BarChart3, Bell, Building2, Calendar,
   Check, CheckCircle2, ChevronDown, CircleHelp, Clock, Compass, Copy,
-  CreditCard, Download, ExternalLink, Filter, Globe2, HelpCircle, Layers,
-  LayoutDashboard, Lightbulb, ListChecks, Mail, Menu, Plus, RefreshCw,
-  RotateCcw, Search, Send, Settings2, ShieldCheck, Sparkles, Target,
+  CreditCard, Download, ExternalLink, FileText, Filter, Globe2, HelpCircle, Layers,
+  LayoutDashboard, Lightbulb, ListChecks, Mail, Menu, Plus, Printer, RefreshCw,
+  RotateCcw, Search, Send, SendHorizontal, Settings2, Share2, ShieldCheck, Sparkles, Target,
   TrendingUp, Users, X, Zap
 } from "lucide-react";
 import Link from "next/link";
@@ -49,6 +49,15 @@ import {
   saveCompetitorAnalyses,
   performCompetitorComparison,
 } from "@/lib/competitor-engine";
+import {
+  type ClientWorkspace,
+  loadWorkspaces,
+  saveWorkspaces,
+  getActiveWorkspaceId,
+  setActiveWorkspaceId,
+  INITIAL_WORKSPACES,
+} from "@/lib/workspaces";
+import { sendProspectToWebhook } from "@/lib/webhook";
 
 const navItems = [
   { label: "Overview", icon: LayoutDashboard },
@@ -74,6 +83,20 @@ export default function Home() {
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [showAddProspectModal, setShowAddProspectModal] = useState(false);
 
+  // Agency Multi-Client Workspaces State
+  const [workspaces, setWorkspaces] = useState<ClientWorkspace[]>(INITIAL_WORKSPACES);
+  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<string>("ws-default");
+  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
+  const [showNewWorkspaceModal, setShowNewWorkspaceModal] = useState(false);
+  const [newWsName, setNewWsName] = useState("");
+  const [newWsIndustry, setNewWsIndustry] = useState("");
+  const [newWsAudience, setNewWsAudience] = useState("");
+  const [newWsLocation, setNewWsLocation] = useState("");
+  const [newWsGoal, setNewWsGoal] = useState("Generate more qualified leads");
+
+  // Executive Growth Brief Modal State
+  const [showBriefModal, setShowBriefModal] = useState(false);
+
   // Growth Engine Data
   const [opportunities, setOpportunities] = useState<GrowthOpportunity[]>(INITIAL_OPPORTUNITIES);
   const [latestAudit, setLatestAudit] = useState<AuditReport | null>(null);
@@ -87,14 +110,18 @@ export default function Home() {
   const [newProspectSector, setNewProspectSector] = useState("");
   const [newProspectUrl, setNewProspectUrl] = useState("");
   const [newProspectOpportunity, setNewProspectOpportunity] = useState("");
+  const [prospectWebhookStatus, setProspectWebhookStatus] = useState<Record<string, "sending" | "success" | "error">>({});
 
-  // Campaign Builder State
+  // Campaign Builder & Interactive Email Client Preview State
   const [campaigns, setCampaigns] = useState<SavedCampaign[]>([]);
   const [selectedOppForCampaign, setSelectedOppForCampaign] = useState<string>("");
   const [campaignType, setCampaignType] = useState<"outreach" | "landing_page" | "proposal" | "community_reply">("outreach");
   const [generatedCampaign, setGeneratedCampaign] = useState<string>("");
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [copiedCampaign, setCopiedCampaign] = useState(false);
+  const [emailViewMode, setEmailViewMode] = useState<"preview" | "raw">("preview");
+  const [selectedProspectForEmailId, setSelectedProspectForEmailId] = useState<string>("");
+  const [customEmailSubject, setCustomEmailSubject] = useState("");
 
   // ROI & Pipeline Stats
   const [roiStats, setRoiStats] = useState<RoiStats>(loadRoiStats());
@@ -127,6 +154,7 @@ export default function Home() {
     setToast(message);
     window.setTimeout(() => setToast(""), 3500);
   };
+
 
   const syncAuditToEngine = useCallback(
     (audit: AuditReport, currentProfile: BusinessProfile, existingOpps: GrowthOpportunity[]) => {
@@ -171,6 +199,24 @@ export default function Home() {
     const savedCompetitors = loadCompetitorAnalyses();
     setCompetitorAnalyses(savedCompetitors);
 
+    const savedWorkspaces = loadWorkspaces();
+    setWorkspaces(savedWorkspaces);
+    const activeId = getActiveWorkspaceId();
+    setActiveWorkspaceIdState(activeId);
+
+    // If active workspace is found in saved workspaces, ensure matching state
+    const currentWs = savedWorkspaces.find((w) => w.id === activeId);
+    if (currentWs) {
+      setProfile(currentWs.profile);
+      setOpportunities(currentWs.opportunities);
+      setProspects(currentWs.prospects);
+      setCampaigns(currentWs.campaigns);
+      setRoiStats(currentWs.roiStats);
+      if (currentWs.opportunities.length > 0) {
+        setSelectedOppForCampaign(currentWs.opportunities[0].id);
+      }
+    }
+
     // Check for audit sync URL trigger
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -188,6 +234,156 @@ export default function Home() {
       }
     }
   }, [syncAuditToEngine]);
+
+  // Agency Workspace Handlers
+  const handleSwitchWorkspace = (targetId: string) => {
+    // 1. Snapshot current workspace state into workspaces
+    const currentSnapshot: ClientWorkspace = {
+      id: activeWorkspaceId,
+      name: profile.name,
+      industry: profile.industry,
+      profile,
+      opportunities,
+      prospects,
+      campaigns,
+      roiStats,
+      latestAudit,
+      auditHistory,
+      competitors: competitorAnalyses,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updatedWorkspaces = workspaces.map((ws) =>
+      ws.id === activeWorkspaceId ? currentSnapshot : ws
+    );
+
+    const target = updatedWorkspaces.find((ws) => ws.id === targetId);
+    if (!target) return;
+
+    setWorkspaces(updatedWorkspaces);
+    saveWorkspaces(updatedWorkspaces);
+    setActiveWorkspaceIdState(targetId);
+    setActiveWorkspaceId(targetId);
+
+    // 2. Load target workspace state
+    setProfile(target.profile);
+    setOpportunities(target.opportunities);
+    setProspects(target.prospects);
+    setCampaigns(target.campaigns);
+    setRoiStats(target.roiStats);
+    setLatestAudit(target.latestAudit);
+    setAuditHistory(target.auditHistory);
+    setCompetitorAnalyses(target.competitors);
+    if (target.opportunities.length > 0) {
+      setSelectedOppForCampaign(target.opportunities[0].id);
+    }
+    setIsWorkspaceMenuOpen(false);
+    notify(`Switched client workspace to ${target.name}.`);
+  };
+
+  const handleCreateWorkspace = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWsName.trim()) return;
+
+    const newWsId = `ws-${Date.now()}`;
+    const newWsProfile: BusinessProfile = {
+      name: newWsName.trim(),
+      industry: newWsIndustry.trim() || "Professional Services",
+      targetAudience: newWsAudience.trim() || "Commercial Decision Makers",
+      location: newWsLocation.trim() || "UK & Remote",
+      website: "",
+      goal: newWsGoal || "Generate more qualified leads",
+      challenge: "Accelerate customer acquisition and increase pipeline velocity",
+      updatedAt: new Date().toISOString(),
+    };
+
+    const newWs: ClientWorkspace = {
+      id: newWsId,
+      name: newWsProfile.name,
+      industry: newWsProfile.industry,
+      profile: newWsProfile,
+      opportunities: [
+        {
+          id: `opp-${newWsId}-1`,
+          title: `Define competitive value proposition for ${newWsProfile.name}`,
+          category: "Trust & Positioning",
+          company: newWsProfile.name,
+          value: "Target customer acquisition",
+          confidence: "High",
+          effort: "quick",
+          source: "Strategic Growth Intake",
+          evidence: `Direct intake for ${newWsProfile.industry} targeting ${newWsProfile.targetAudience}.`,
+          reason: `Establishes distinct positioning before outbound outreach launches.`,
+          action: "Draft clear 1-sentence value proposition and core commercial offer.",
+          hypothesis: "A direct, unambiguous offer improves initial prospect response rates by 20%.",
+          successMetric: "Finalised positioning statement approved by leadership.",
+          deadline: "Within 7 days",
+          status: "New",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+      prospects: discoverProspectsForProfile(
+        newWsProfile.industry,
+        newWsProfile.location,
+        newWsProfile.targetAudience
+      ),
+      campaigns: [],
+      roiStats: {
+        averageDealValue: 3500,
+        monthlyMarketingSpend: 500,
+        totalEnquiries: 5,
+        qualifiedLeads: 2,
+        dealsWon: 0,
+        verifiedWonRevenue: 0,
+      },
+      latestAudit: null,
+      auditHistory: [],
+      competitors: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updated = [newWs, ...workspaces];
+    setWorkspaces(updated);
+    saveWorkspaces(updated);
+    setShowNewWorkspaceModal(false);
+    setNewWsName("");
+    setNewWsIndustry("");
+    setNewWsAudience("");
+    setNewWsLocation("");
+
+    // Switch to it
+    handleSwitchWorkspace(newWsId);
+    notify(`Created new client workspace: ${newWs.name}`);
+  };
+
+  // Push verified prospect to Make.com / Zapier webhook
+  const handlePushProspectToWebhook = async (p: Prospect) => {
+    setProspectWebhookStatus((prev) => ({ ...prev, [p.id]: "sending" }));
+    try {
+      await sendProspectToWebhook({
+        companyName: p.companyName,
+        targetRole: p.targetRole,
+        sector: p.sector,
+        location: p.location,
+        sourceUrl: p.sourceUrl,
+        sourceType: p.sourceType,
+        dateChecked: p.dateChecked,
+        estimatedOpportunity: p.estimatedOpportunity,
+        relevanceReason: p.relevanceReason,
+        outreachStatus: p.outreachStatus,
+        clientWorkspace: profile.name,
+      });
+      setProspectWebhookStatus((prev) => ({ ...prev, [p.id]: "success" }));
+      notify(`Pushed ${p.companyName} to webhook endpoint (Make.com / Zapier).`);
+    } catch (err) {
+      setProspectWebhookStatus((prev) => ({ ...prev, [p.id]: "error" }));
+      notify(err instanceof Error ? err.message : "Failed to push to webhook.");
+    }
+  };
+
 
   const handleAddCompetitor = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -545,6 +741,103 @@ export default function Home() {
     ? `/auditor?url=${encodeURIComponent(profile.website.trim())}`
     : "/auditor";
 
+  // Active prospect chosen for email client preview
+  const activeEmailProspect = useMemo(() => {
+    return prospects.find((p) => p.id === selectedProspectForEmailId) || prospects[0] || null;
+  }, [prospects, selectedProspectForEmailId]);
+
+  // Derive interpolated email subject and body
+  const previewEmailData = useMemo(() => {
+    const p = activeEmailProspect;
+    const recipientCompany = p ? p.companyName : "Your prospective client";
+    const recipientRole = p ? p.targetRole : "Decision Maker";
+    const recipientLocation = p ? p.location : profile.location || "your region";
+    const recipientName = p ? p.targetRole.split(" ")[0] || "there" : "there";
+
+    let raw = generatedCampaign;
+    if (!raw && campaigns.length > 0) {
+      raw = campaigns[0].content;
+    }
+    if (!raw) {
+      raw = `Hi {{First_Name}},\n\nI noticed {{Company}} operates across {{Location}}. Many {{Role}}s in your sector mention their biggest challenge is response delays and lack of transparent SLAs from existing partners.\n\nAt ${profile.name}, we provide tailored ${profile.industry} with guaranteed 2-hour response windows and transparent weekly reporting.\n\nWould you be open to a brief 10-minute introductory conversation this Thursday at 11am to see if this could streamline operations for {{Company}}?\n\nBest regards,\n${profile.name} Team`;
+    }
+
+    const interpolatedBody = raw
+      .replace(/\{\{First_Name\}\}/g, recipientName)
+      .replace(/\{\{Company\}\}/g, recipientCompany)
+      .replace(/\{\{Role\}\}/g, recipientRole)
+      .replace(/\{\{Location\}\}/g, recipientLocation)
+      .replace(/\{\{Target_Role\}\}/g, recipientRole);
+
+    const defaultSubject = customEmailSubject || `Intro: ${profile.name} & ${recipientCompany} (${profile.industry})`;
+
+    return {
+      to: p ? `contact@${recipientCompany.toLowerCase().replace(/[^a-z0-9]/g, "")}.co.uk` : "client@example.com",
+      toLabel: `${recipientRole} · ${recipientCompany}`,
+      subject: defaultSubject,
+      body: interpolatedBody,
+      rawBody: raw,
+    };
+  }, [activeEmailProspect, generatedCampaign, campaigns, profile, customEmailSubject]);
+
+  const smartAlerts = useMemo(() => {
+    const list: Array<{ id: string; type: "urgent" | "growth"; title: string; desc: string; actionText: string; onAction: () => void }> = [];
+
+    // 1. Follow-up cadence
+    const pendingFollowUps = prospects.filter((p) => p.outreachStatus === "Contacted");
+    if (pendingFollowUps.length > 0) {
+      list.push({
+        id: "alert-followup",
+        type: "urgent",
+        title: `${pendingFollowUps.length} follow-up ${pendingFollowUps.length === 1 ? "touchpoint" : "touchpoints"} due`,
+        desc: `${pendingFollowUps.map((p) => p.companyName).slice(0, 2).join(", ")}${pendingFollowUps.length > 2 ? ` and ${pendingFollowUps.length - 2} others` : ""} were contacted. Send Touch #2 follow-up sequence to prevent deal cold-off.`,
+        actionText: "Prepare Touch #2 Sequence",
+        onAction: () => {
+          setActiveNav("Campaigns");
+          setCampaignType("outreach");
+        },
+      });
+    }
+
+    // 2. Deadlines approaching
+    const urgentOpps = opportunities.filter(
+      (o) => (o.status === "New" || o.status === "In progress") && o.deadline.includes("7 days")
+    );
+    if (urgentOpps.length > 0) {
+      list.push({
+        id: "alert-deadline",
+        type: "urgent",
+        title: `${urgentOpps.length} priority ${urgentOpps.length === 1 ? "action has" : "actions have"} a 7-day target`,
+        desc: `"${urgentOpps[0].title.slice(0, 55)}…" is scheduled for completion within 7 days.`,
+        actionText: "Open Action Centre",
+        onAction: () => setActiveNav("Action centre"),
+      });
+    }
+
+    // 3. Audit or competitor gap
+    if (latestAudit && latestAudit.score < 80) {
+      list.push({
+        id: "alert-audit",
+        type: "growth",
+        title: `Audit Health Signal: Score ${latestAudit.score}/100`,
+        desc: `Identified ${latestAudit.findings.filter((f) => f.severity === "high").length} high-friction areas on ${latestAudit.finalUrl.replace(/^https?:\/\//, "")}.`,
+        actionText: "Synthesize Audit into Pipeline",
+        onAction: () => syncAuditToEngine(latestAudit, profile, opportunities),
+      });
+    } else if (competitorAnalyses.length > 0 && competitorAnalyses[0].winnableGaps.length > 0) {
+      list.push({
+        id: "alert-gap",
+        type: "growth",
+        title: `Competitive Advantage Gap Identified`,
+        desc: competitorAnalyses[0].winnableGaps[0],
+        actionText: "Review Competitors",
+        onAction: () => setActiveNav("Competitors"),
+      });
+    }
+
+    return list;
+  }, [prospects, opportunities, latestAudit, competitorAnalyses, profile, syncAuditToEngine]);
+
   return (
     <main className="app-shell">
       {/* Sidebar */}
@@ -566,14 +859,55 @@ export default function Home() {
           </button>
         </div>
 
-        <div className="workspace-switch" onClick={() => setShowProfileModal(true)} style={{ cursor: "pointer" }}>
-          <div className="workspace-avatar">{profile.name.slice(0, 2).toUpperCase()}</div>
-          <div className="workspace-copy">
-            <strong>{profile.name}</strong>
-            <span>{profile.industry || "Growth workspace"}</span>
-          </div>
-          <ChevronDown size={15} />
+        {/* Agency Workspace Switcher */}
+        <div className="workspace-dropdown-wrapper">
+          <button
+            type="button"
+            className="workspace-trigger-btn"
+            onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
+            aria-label="Switch client workspace"
+          >
+            <div className="workspace-avatar">{profile.name.slice(0, 2).toUpperCase()}</div>
+            <div className="workspace-copy">
+              <strong>{profile.name}</strong>
+              <span>{profile.industry || "Growth workspace"}</span>
+            </div>
+            <ChevronDown size={15} style={{ transform: isWorkspaceMenuOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+          </button>
+
+          {isWorkspaceMenuOpen && (
+            <div className="workspace-dropdown-menu">
+              <div style={{ padding: "4px 8px 2px", fontSize: 9, fontWeight: 700, color: "#839589", letterSpacing: 0.8, textTransform: "uppercase" }}>
+                Switch Client Workspace
+              </div>
+              {workspaces.map((ws) => (
+                <button
+                  key={ws.id}
+                  className={`workspace-item ${ws.id === activeWorkspaceId ? "active" : ""}`}
+                  onClick={() => handleSwitchWorkspace(ws.id)}
+                >
+                  <Building2 size={14} style={{ color: ws.id === activeWorkspaceId ? "#16764b" : "#809287" }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ws.name}</div>
+                    <div style={{ fontSize: 9, color: "#8a978f" }}>{ws.industry}</div>
+                  </div>
+                  {ws.id === activeWorkspaceId && <Check size={14} style={{ color: "#16764b" }} />}
+                </button>
+              ))}
+              <div className="workspace-divider" />
+              <button
+                className="workspace-new-btn"
+                onClick={() => {
+                  setIsWorkspaceMenuOpen(false);
+                  setShowNewWorkspaceModal(true);
+                }}
+              >
+                <Plus size={14} /> Add new client workspace
+              </button>
+            </div>
+          )}
         </div>
+
 
         <div className="nav-caption">WORKSPACE</div>
         <nav>
@@ -719,7 +1053,14 @@ export default function Home() {
                 {activeNav === "Competitors" && "Compare public positioning, guarantees, pricing models, and identify actionable market gaps."}
               </p>
             </div>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                className="outline-button"
+                onClick={() => setShowBriefModal(true)}
+                title="Generate printable 1-page executive growth assessment"
+              >
+                <FileText size={15} style={{ color: "#16764b" }} /> Executive Brief
+              </button>
               {activeNav === "Lead Finder" && (
                 <button className="primary-button" onClick={handleDiscoverProspects}>
                   <Search size={15} /> Discover prospects
@@ -786,6 +1127,26 @@ export default function Home() {
                   <Link href={auditorHref} className="primary-button" style={{ textDecoration: "none" }}>
                     Run website audit <ArrowRight size={15} />
                   </Link>
+                </div>
+              )}
+
+              {/* Smart Growth & Follow-Up Alerts */}
+              {smartAlerts.length > 0 && (
+                <div className="smart-alerts-container">
+                  {smartAlerts.map((alert) => (
+                    <div key={alert.id} className={`smart-alert-card ${alert.type}`}>
+                      <div className="smart-alert-icon">
+                        {alert.type === "urgent" ? <Clock size={16} /> : <Sparkles size={16} />}
+                      </div>
+                      <div className="smart-alert-body">
+                        <strong>{alert.title}</strong>
+                        <p>{alert.desc}</p>
+                        <button className="smart-alert-action" onClick={alert.onAction}>
+                          {alert.actionText} <ArrowRight size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1177,26 +1538,53 @@ export default function Home() {
                       <span>· Checked {p.dateChecked}</span>
                     </div>
 
-                    <div style={{ marginTop: "auto", display: "flex", gap: 8, paddingTop: 10 }}>
-                      <select
-                        value={p.outreachStatus}
-                        onChange={(e) => updateProspectStatus(p.id, e.target.value as Prospect["outreachStatus"])}
-                        style={{ flex: 1, height: 32, fontSize: 10, borderRadius: 6, border: "1px solid #dce5df" }}
-                      >
-                        <option value="Discovered">Discovered</option>
-                        <option value="Contacted">Contacted</option>
-                        <option value="In Discussion">In Discussion</option>
-                        <option value="Won">Won deal</option>
-                        <option value="Parked">Parked</option>
-                      </select>
+                    <div style={{ marginTop: "auto", display: "grid", gap: 8, paddingTop: 10 }}>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <select
+                          value={p.outreachStatus}
+                          onChange={(e) => updateProspectStatus(p.id, e.target.value as Prospect["outreachStatus"])}
+                          style={{ flex: 1, height: 32, fontSize: 10, borderRadius: 6, border: "1px solid #dce5df" }}
+                        >
+                          <option value="Discovered">Discovered</option>
+                          <option value="Contacted">Contacted</option>
+                          <option value="In Discussion">In Discussion</option>
+                          <option value="Won">Won deal</option>
+                          <option value="Parked">Parked</option>
+                        </select>
+                        <button
+                          className="outline-button"
+                          onClick={() => {
+                            setSelectedProspectForEmailId(p.id);
+                            setEmailViewMode("preview");
+                            setActiveNav("Campaigns");
+                            notify(`Prepared email outreach preview for ${p.companyName}.`);
+                          }}
+                        >
+                          <Mail size={13} /> Write outreach
+                        </button>
+                      </div>
+
                       <button
                         className="outline-button"
-                        onClick={() => {
-                          setActiveNav("Campaigns");
-                          notify(`Switched to Campaign Builder to prepare outreach for ${p.companyName}.`);
+                        style={{
+                          width: "100%",
+                          fontSize: 10,
+                          padding: "6px 10px",
+                          color: prospectWebhookStatus[p.id] === "success" ? "#16764b" : "#44554a",
+                          borderColor: prospectWebhookStatus[p.id] === "success" ? "#b5dfc6" : "#dfe7e1",
+                          background: prospectWebhookStatus[p.id] === "success" ? "#f2f9f5" : "#fff",
                         }}
+                        disabled={prospectWebhookStatus[p.id] === "sending"}
+                        onClick={() => handlePushProspectToWebhook(p)}
+                        title="Push prospect details directly to Make.com / Zapier webhook"
                       >
-                        <Mail size={13} /> Write outreach
+                        {prospectWebhookStatus[p.id] === "sending" ? (
+                          <><span className="spinner" style={{ width: 11, height: 11, borderTopColor: "#16764b" }} /> Sending to webhook…</>
+                        ) : prospectWebhookStatus[p.id] === "success" ? (
+                          <><Check size={13} style={{ color: "#16764b" }} /> Synced to Webhook (Make/Zapier)</>
+                        ) : (
+                          <><Share2 size={13} /> Push to Webhook (Make / Zapier)</>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -1311,41 +1699,140 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Live Preview Area */}
+                {/* Live Preview & Interactive Email Client Frame */}
                 <div className="campaign-card">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <h3 style={{ fontSize: 13, margin: 0 }}>Generated Marketing Copy</h3>
-                    {generatedCampaign && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <button
                         className="outline-button"
-                        onClick={() => copyToClipboard(generatedCampaign)}
+                        style={{
+                          background: emailViewMode === "preview" ? "#eaf6ef" : "#fff",
+                          color: emailViewMode === "preview" ? "#176b45" : "#53685b",
+                          borderColor: emailViewMode === "preview" ? "#a3d8b5" : "#dfe7e1",
+                          fontWeight: 700,
+                        }}
+                        onClick={() => setEmailViewMode("preview")}
                       >
-                        {copiedCampaign ? <Check size={14} /> : <Copy size={14} />} Copy copy
+                        <Mail size={13} /> Interactive Email Preview
                       </button>
-                    )}
+                      <button
+                        className="outline-button"
+                        style={{
+                          background: emailViewMode === "raw" ? "#eaf6ef" : "#fff",
+                          color: emailViewMode === "raw" ? "#176b45" : "#53685b",
+                          borderColor: emailViewMode === "raw" ? "#a3d8b5" : "#dfe7e1",
+                          fontWeight: 700,
+                        }}
+                        onClick={() => setEmailViewMode("raw")}
+                      >
+                        <FileText size={13} /> Raw Copy & Multi-Touch
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button
+                        className="outline-button"
+                        onClick={() => copyToClipboard(emailViewMode === "preview" ? previewEmailData.body : (generatedCampaign || previewEmailData.rawBody))}
+                      >
+                        {copiedCampaign ? <Check size={14} /> : <Copy size={14} />} Copy
+                      </button>
+                      <button
+                        className="primary-button"
+                        style={{ padding: "8px 12px", fontSize: 10 }}
+                        onClick={() => {
+                          const mailtoUrl = `mailto:${encodeURIComponent(previewEmailData.to)}?subject=${encodeURIComponent(previewEmailData.subject)}&body=${encodeURIComponent(previewEmailData.body)}`;
+                          window.location.href = mailtoUrl;
+                          notify(`Opened default email client for ${previewEmailData.toLabel}.`);
+                        }}
+                        title="Open Apple Mail, Outlook, or Thunderbird with prefilled content"
+                      >
+                        <SendHorizontal size={14} /> Open in Email (mailto)
+                      </button>
+                    </div>
                   </div>
 
-                  {generatedCampaign ? (
-                    <div className="campaign-preview">{generatedCampaign}</div>
+                  {emailViewMode === "preview" ? (
+                    <div className="email-client-frame">
+                      <div className="email-client-header-bar">
+                        <div className="mac-dots">
+                          <span className="mac-dot red" />
+                          <span className="mac-dot yellow" />
+                          <span className="mac-dot green" />
+                        </div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "#6e8074", letterSpacing: 0.5 }}>
+                          OUTREACH DISPATCH PREVIEW
+                        </div>
+                        <div style={{ width: 40 }} />
+                      </div>
+
+                      <div className="email-client-meta">
+                        <div className="email-meta-row">
+                          <span className="email-meta-label">Target Lead:</span>
+                          <select
+                            value={selectedProspectForEmailId}
+                            onChange={(e) => setSelectedProspectForEmailId(e.target.value)}
+                            style={{ flex: 1, height: 30, fontSize: 11, borderRadius: 6, border: "1px solid #dce5df", padding: "0 8px" }}
+                          >
+                            {prospects.length === 0 && <option value="">No prospects saved in Lead Finder</option>}
+                            {prospects.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.companyName} ({p.targetRole} · {p.location})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="email-meta-row">
+                          <span className="email-meta-label">To:</span>
+                          <span style={{ fontSize: 11, color: "#253a2d", fontWeight: 600 }}>{previewEmailData.toLabel}</span>
+                          <span className="email-tag-pill">&lt;{previewEmailData.to}&gt;</span>
+                        </div>
+                        <div className="email-meta-row">
+                          <span className="email-meta-label">Subject:</span>
+                          <input
+                            className="email-meta-input"
+                            value={customEmailSubject || previewEmailData.subject}
+                            onChange={(e) => setCustomEmailSubject(e.target.value)}
+                            placeholder="Email Subject Line…"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="email-body-editor">
+                        {previewEmailData.body}
+                      </div>
+
+                      <div className="email-actions-bar">
+                        <span style={{ fontSize: 10, color: "#798b80" }}>
+                          Variables automatically mapped from verified lead data.
+                        </span>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            className="outline-button"
+                            onClick={() => copyToClipboard(previewEmailData.body)}
+                          >
+                            <Copy size={13} /> Copy message
+                          </button>
+                          <button
+                            className="primary-button"
+                            style={{ padding: "6px 12px", fontSize: 10 }}
+                            onClick={() => {
+                              const mailtoUrl = `mailto:${encodeURIComponent(previewEmailData.to)}?subject=${encodeURIComponent(customEmailSubject || previewEmailData.subject)}&body=${encodeURIComponent(previewEmailData.body)}`;
+                              window.location.href = mailtoUrl;
+                              notify(`Opened default email client for ${previewEmailData.toLabel}.`);
+                            }}
+                          >
+                            <SendHorizontal size={13} /> 1-Click Launch Email
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   ) : (
-                    <div
-                      style={{
-                        padding: 60,
-                        textAlign: "center",
-                        color: "#7e8f84",
-                        border: "2px dashed #e2ede5",
-                        borderRadius: 10,
-                        fontSize: 11,
-                      }}
-                    >
-                      <Sparkles size={28} style={{ margin: "0 auto 12px", color: "#2d8a59" }} />
-                      <strong>Ready to turn an opportunity into actionable outreach.</strong>
-                      <p style={{ maxWidth: 360, margin: "6px auto 16px", lineHeight: 1.5 }}>
-                        Select an opportunity and click <strong>Generate Campaign</strong> to produce a 3-touch outbound sequence or conversion copy.
-                      </p>
-                      <button className="primary-button" onClick={handleGenerateCampaign} disabled={campaignLoading}>
-                        Generate initial draft
-                      </button>
+                    <div>
+                      {generatedCampaign ? (
+                        <div className="campaign-preview">{generatedCampaign}</div>
+                      ) : (
+                        <div className="campaign-preview">{previewEmailData.rawBody}</div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2310,7 +2797,251 @@ export default function Home() {
         </div>
       )}
 
-      {/* Toast Notification */}
+      {/* EXECUTIVE GROWTH BRIEF MODAL (PRINTABLE 1-PAGE SUMMARY) */}
+      {showBriefModal && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowBriefModal(false);
+          }}
+        >
+          <div className="brief-modal">
+            <div className="brief-header">
+              <div>
+                <div className="brief-brand-tag">
+                  <TrendingUp size={15} /> GainForge Growth Intelligence · Executive Brief
+                </div>
+                <h2 className="brief-title">{profile.name} Growth Strategy</h2>
+                <div className="brief-sub">
+                  Target: {profile.targetAudience} · Market: {profile.location} · Goal: {profile.goal}
+                </div>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => setShowBriefModal(false)}
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* KPI Summary Grid */}
+            <div className="brief-meta-grid">
+              <div className="brief-meta-item">
+                <small>Pipeline Value</small>
+                <strong>£{totalPipelineValue.toLocaleString()}</strong>
+              </div>
+              <div className="brief-meta-item">
+                <small>Won Revenue</small>
+                <strong style={{ color: "#16764b" }}>£{wonRevenue.toLocaleString()}</strong>
+              </div>
+              <div className="brief-meta-item">
+                <small>Audit Health Score</small>
+                <strong>{latestAudit ? `${latestAudit.score}/100` : "74/100"}</strong>
+              </div>
+              <div className="brief-meta-item">
+                <small>Attributable ROI</small>
+                <strong style={{ color: "#186c46" }}>{estimatedRoiRatio}x</strong>
+              </div>
+            </div>
+
+            {/* Strategic Executive Summary */}
+            <div className="brief-section">
+              <div className="brief-section-title">
+                <Sparkles size={16} style={{ color: "#16764b" }} /> Strategic Diagnosis & Commercial Plan
+              </div>
+              <p style={{ fontSize: 11, lineHeight: 1.7, color: "#45564c", margin: 0 }}>
+                This assessment turns direct website audit findings, competitive benchmarks, and public demand signals into an actionable growth sprint. By eliminating friction on customer trust signals and deploying structured 3-touch outbound sequences to verified commercial accounts in <strong>{profile.location}</strong>, <strong>{profile.name}</strong> can systematically capture high-value contracts and increase qualified demo bookings.
+              </p>
+            </div>
+
+            {/* Top 3 Opportunities Table */}
+            <div className="brief-section">
+              <div className="brief-section-title">
+                <Target size={16} style={{ color: "#16764b" }} /> Top Priority Growth Initiatives
+              </div>
+              <table className="brief-opp-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "35%" }}>Opportunity & Focus</th>
+                    <th style={{ width: "35%" }}>Concrete Action to Take</th>
+                    <th style={{ width: "15%" }}>Effort</th>
+                    <th style={{ width: "15%" }}>Metric</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {opportunities.slice(0, 3).map((opp) => (
+                    <tr key={opp.id}>
+                      <td>
+                        <strong style={{ color: "#182c20" }}>{opp.title}</strong>
+                        <div style={{ fontSize: 10, color: "#6e8075", marginTop: 3 }}>{opp.evidence}</div>
+                      </td>
+                      <td style={{ color: "#2d4234" }}>{opp.action}</td>
+                      <td>
+                        <span className={`effort-badge ${opp.effort}`}>{opp.effort}</span>
+                      </td>
+                      <td style={{ fontSize: 10, fontWeight: 700, color: "#16764b" }}>
+                        {opp.successMetric}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 30-Day Growth Sprint */}
+            <div className="brief-section">
+              <div className="brief-section-title">
+                <Calendar size={16} style={{ color: "#16764b" }} /> 30-Day Growth Sprint Milestones
+              </div>
+              <div className="brief-calendar-grid">
+                <div className="brief-cal-column">
+                  <h4>Week 1: Foundations</h4>
+                  <ul>
+                    <li>Implement urgent website trust & conversion fixes.</li>
+                    <li>Publish response SLA guarantees above the fold.</li>
+                    <li>Synchronize audit recommendations into pipeline.</li>
+                  </ul>
+                </div>
+                <div className="brief-cal-column">
+                  <h4>Week 2: Direct Outreach</h4>
+                  <ul>
+                    <li>Verify top 10 targeted corporate accounts.</li>
+                    <li>Deploy 3-touch sequence via automated webhook.</li>
+                    <li>Personalize initial emails with verifiable public data.</li>
+                  </ul>
+                </div>
+                <div className="brief-cal-column">
+                  <h4>Weeks 3–4: Revenue & Review</h4>
+                  <ul>
+                    <li>Conduct discovery calls and tailored audits.</li>
+                    <li>Log completed contract outcomes and verified revenue.</li>
+                    <li>Run repeat audit to track performance score drift.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Target Leads Sample */}
+            {prospects.length > 0 && (
+              <div className="brief-section">
+                <div className="brief-section-title">
+                  <Users size={16} style={{ color: "#16764b" }} /> Verified Accounts In Acquisition Pipeline
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                  {prospects.slice(0, 3).map((p) => (
+                    <div key={p.id} style={{ background: "#f8faf8", border: "1px solid #e1ece4", borderRadius: 8, padding: 10, fontSize: 10 }}>
+                      <strong style={{ fontSize: 11, color: "#18291f" }}>{p.companyName}</strong>
+                      <div style={{ color: "#6d7d73", margin: "2px 0 4px" }}>{p.targetRole} · {p.location}</div>
+                      <div style={{ color: "#16764b", fontWeight: 700 }}>{p.estimatedOpportunity}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Action Bar for Print & Save */}
+            <div className="brief-actions-bar">
+              <button
+                className="outline-button"
+                onClick={() => setShowBriefModal(false)}
+              >
+                Close
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => window.print()}
+              >
+                <Printer size={15} /> Print / Save as PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NEW CLIENT WORKSPACE MODAL (AGENCY WORKSPACE) */}
+      {showNewWorkspaceModal && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowNewWorkspaceModal(false);
+          }}
+        >
+          <div className="modal">
+            <div className="modal-header">
+              <div>
+                <div className="modal-kicker">
+                  <Building2 size={14} /> AGENCY CLIENT WORKSPACE
+                </div>
+                <h2>Create new client workspace</h2>
+                <p>Manage separate client businesses with their own audits, opportunities, and pipelines.</p>
+              </div>
+              <button className="icon-button" onClick={() => setShowNewWorkspaceModal(false)} aria-label="Close">
+                <X size={19} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateWorkspace}>
+              <label>
+                Client / Company Name
+                <input
+                  value={newWsName}
+                  onChange={(e) => setNewWsName(e.target.value)}
+                  placeholder="e.g. Camden Commercial Estates Ltd"
+                  required
+                />
+              </label>
+
+              <div className="form-row-2">
+                <label>
+                  Industry / Sector
+                  <input
+                    value={newWsIndustry}
+                    onChange={(e) => setNewWsIndustry(e.target.value)}
+                    placeholder="e.g. Property Management"
+                  />
+                </label>
+                <label>
+                  Location / Region
+                  <input
+                    value={newWsLocation}
+                    onChange={(e) => setNewWsLocation(e.target.value)}
+                    placeholder="e.g. North London"
+                  />
+                </label>
+              </div>
+
+              <label>
+                Target Customer / Buyer Profile
+                <input
+                  value={newWsAudience}
+                  onChange={(e) => setNewWsAudience(e.target.value)}
+                  placeholder="e.g. Managing Directors and Building Operators"
+                />
+              </label>
+
+              <label>
+                Primary Growth Goal
+                <select
+                  value={newWsGoal}
+                  onChange={(e) => setNewWsGoal(e.target.value)}
+                  style={{ height: 40, borderRadius: 8, border: "1px solid #dfe7e1", padding: "0 10px", fontSize: 11 }}
+                >
+                  <option>Generate more qualified leads</option>
+                  <option>Win commercial contracts</option>
+                  <option>Improve conversion rates</option>
+                  <option>Retain existing clients</option>
+                </select>
+              </label>
+
+              <button className="primary-button modal-submit" type="submit">
+                Create & switch to workspace <ArrowRight size={16} />
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div className="toast">
           <Check size={16} />

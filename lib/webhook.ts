@@ -71,4 +71,68 @@ export async function sendLeadToWebhook(lead: LeadData): Promise<{ ok: boolean; 
 
 export const sendLeadWebhook = sendLeadToWebhook;
 export const sendWebhook = sendLeadToWebhook;
+
+export interface ProspectWebhookPayload {
+  companyName: string;
+  targetRole?: string;
+  sector?: string;
+  location?: string;
+  sourceUrl?: string;
+  sourceType?: string;
+  dateChecked?: string;
+  estimatedOpportunity?: string;
+  relevanceReason?: string;
+  outreachStatus?: string;
+  clientWorkspace?: string;
+  exportedAt?: string;
+}
+
+/**
+ * Pushes a verified prospect record directly to LEAD_WEBHOOK_URL (Make.com, Zapier, Google Sheets, HubSpot)
+ */
+export async function sendProspectToWebhook(prospect: ProspectWebhookPayload): Promise<{ ok: boolean; status?: number; error?: string }> {
+  const payload = {
+    type: "verified_prospect",
+    companyName: prospect.companyName,
+    targetRole: prospect.targetRole || "Decision Maker",
+    sector: prospect.sector || "Unspecified",
+    location: prospect.location || "UK",
+    sourceUrl: prospect.sourceUrl || "",
+    sourceType: prospect.sourceType || "Public Register",
+    dateChecked: prospect.dateChecked || new Date().toISOString().slice(0, 10),
+    estimatedOpportunity: prospect.estimatedOpportunity || "Commercial Contract",
+    relevanceReason: prospect.relevanceReason || "Direct match with ideal target customer profile.",
+    outreachStatus: prospect.outreachStatus || "Discovered",
+    clientWorkspace: prospect.clientWorkspace || "Default Workspace",
+    exportedAt: new Date().toISOString(),
+  };
+
+  const webhookUrl = process.env.LEAD_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.info("[gainforge-prospect-webhook]", JSON.stringify(payload));
+    return { ok: true, status: 200 };
+  }
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Webhook responded with status ${res.status}`);
+    }
+
+    return { ok: true, status: res.status };
+  } catch (err) {
+    console.error("Prospect webhook push failed", err);
+    throw new Error(err instanceof Error ? err.message : "Failed to dispatch prospect to webhook.");
+  }
+}
+
 export default sendLeadToWebhook;
+
