@@ -42,7 +42,13 @@ import {
   saveRoiStats,
   loadAuditHistory,
 } from "@/lib/roi-engine";
-import { COMPETITOR_BENCHMARKS } from "@/lib/competitor-engine";
+import {
+  COMPETITOR_BENCHMARKS,
+  type CompetitorAnalysis,
+  loadCompetitorAnalyses,
+  saveCompetitorAnalyses,
+  performCompetitorComparison,
+} from "@/lib/competitor-engine";
 
 const navItems = [
   { label: "Overview", icon: LayoutDashboard },
@@ -93,6 +99,13 @@ export default function Home() {
   // ROI & Pipeline Stats
   const [roiStats, setRoiStats] = useState<RoiStats>(loadRoiStats());
   const [auditHistory, setAuditHistory] = useState<AuditHistoryEntry[]>([]);
+
+  // Competitor Analysis State
+  const [competitorAnalyses, setCompetitorAnalyses] = useState<CompetitorAnalysis[]>([]);
+  const [showCompetitorModal, setShowCompetitorModal] = useState(false);
+  const [competitorUrl, setCompetitorUrl] = useState("");
+  const [competitorName, setCompetitorName] = useState("");
+  const [analyzingCompetitor, setAnalyzingCompetitor] = useState(false);
 
   // Filters & Selection
   const [filter, setFilter] = useState("All");
@@ -155,6 +168,9 @@ export default function Home() {
     const savedHistory = loadAuditHistory();
     setAuditHistory(savedHistory);
 
+    const savedCompetitors = loadCompetitorAnalyses();
+    setCompetitorAnalyses(savedCompetitors);
+
     // Check for audit sync URL trigger
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -172,6 +188,40 @@ export default function Home() {
       }
     }
   }, [syncAuditToEngine]);
+
+  const handleAddCompetitor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!competitorUrl.trim()) return;
+
+    setAnalyzingCompetitor(true);
+    try {
+      const result = await performCompetitorComparison(
+        competitorUrl,
+        competitorName,
+        profile.name,
+        profile.industry
+      );
+
+      const updated = [result, ...competitorAnalyses];
+      setCompetitorAnalyses(updated);
+      saveCompetitorAnalyses(updated);
+      setShowCompetitorModal(false);
+      setCompetitorUrl("");
+      setCompetitorName("");
+      notify(`Competitor comparison completed for ${result.competitorName}.`);
+    } catch {
+      notify("Failed to analyze competitor. Please check the address.");
+    } finally {
+      setAnalyzingCompetitor(false);
+    }
+  };
+
+  const deleteCompetitorAnalysis = (id: string) => {
+    const updated = competitorAnalyses.filter((c) => c.id !== id);
+    setCompetitorAnalyses(updated);
+    saveCompetitorAnalyses(updated);
+    notify("Competitor analysis removed.");
+  };
 
   const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1493,50 +1543,152 @@ export default function Home() {
               <div className="panel-header">
                 <div>
                   <h2>Competitor Intelligence & Positioning Gaps</h2>
-                  <p>Benchmark your offering against standard competitors to identify winnable market advantages.</p>
+                  <p>Input competitor websites to benchmark your offering, identify weaknesses, and uncover winnable market gaps.</p>
                 </div>
-                <span className="demo-pill">
-                  <span /> BENCHMARK
-                </span>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button className="primary-button" onClick={() => setShowCompetitorModal(true)}>
+                    <Plus size={15} /> Compare competitor URL
+                  </button>
+                </div>
               </div>
 
-              <div style={{ padding: "0 20px 20px", display: "grid", gap: 12 }}>
-                {COMPETITOR_BENCHMARKS.map((c, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      background: "#fff",
-                      border: "1px solid #e3ebe5",
-                      borderRadius: 10,
-                      padding: 16,
-                      display: "grid",
-                      gridTemplateColumns: "200px 1fr 1fr",
-                      gap: 16,
-                      alignItems: "start",
-                    }}
-                  >
-                    <div>
-                      <strong style={{ fontSize: 12, color: "#17271e" }}>{c.dimension}</strong>
-                      <span className="category-pill" style={{ display: "inline-block", marginTop: 6 }}>
-                        {c.impact} Leverage
-                      </span>
-                    </div>
+              {/* Analyzed Competitors Section */}
+              {competitorAnalyses.length > 0 && (
+                <div className="competitor-list">
+                  <h3 style={{ fontSize: 13, margin: "6px 0 2px", color: "#192c20" }}>
+                    Live Competitor Comparisons ({competitorAnalyses.length})
+                  </h3>
+                  {competitorAnalyses.map((c) => (
+                    <div className="competitor-card" key={c.id}>
+                      <div className="competitor-card-header">
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <h3 style={{ margin: 0, fontSize: 14 }}>{c.competitorName}</h3>
+                            <a
+                              href={c.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: "#6b7c72", textDecoration: "underline" }}
+                            >
+                              {c.url.replace(/^https?:\/\//, "")} <ExternalLink size={11} />
+                            </a>
+                            <span style={{ fontSize: 10, color: "#8a978f" }}>· Analyzed {c.analyzedAt}</span>
+                          </div>
+                          <p style={{ margin: "6px 0 0", fontSize: 11, color: "#5d6e64", lineHeight: 1.55 }}>
+                            {c.positioningSummary}
+                          </p>
+                        </div>
 
-                    <div style={{ background: "#f8faf8", padding: 10, borderRadius: 8, fontSize: 10 }}>
-                      <strong style={{ display: "block", color: "#8a978f", fontSize: 8, marginBottom: 4 }}>
-                        TYPICAL COMPETITOR DEFICIT
-                      </strong>
-                      {c.typicalCompetitor}
-                    </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {c.auditScore !== undefined && (
+                            <span className={`competitor-score ${c.auditScore < 65 ? "warning" : ""}`}>
+                              Audit: {c.auditScore}/100
+                            </span>
+                          )}
+                          <button
+                            className="outline-button"
+                            style={{ padding: "5px 8px", fontSize: 10, color: "#9a4444" }}
+                            onClick={() => deleteCompetitorAnalysis(c.id)}
+                            aria-label="Remove competitor analysis"
+                          >
+                            <X size={13} /> Remove
+                          </button>
+                        </div>
+                      </div>
 
-                    <div style={{ background: "#edf7f1", padding: 10, borderRadius: 8, fontSize: 10, color: "#144d32" }}>
-                      <strong style={{ display: "block", color: "#22754d", fontSize: 8, marginBottom: 4 }}>
-                        GAINFORGE WINNABLE ADVANTAGE
-                      </strong>
-                      {c.competitiveOpportunity}
+                      {/* Head-to-Head Comparison Table */}
+                      <div style={{ background: "#fafcfa", border: "1px solid #e7efe9", borderRadius: 8, padding: "10px 14px", marginTop: 8 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", gap: 12, paddingBottom: 6, borderBottom: "1px solid #e2ece4", fontSize: 9, fontWeight: 700, color: "#798b7f" }}>
+                          <span>FACTOR</span>
+                          <span>YOUR ADVANTAGE ({profile.name})</span>
+                          <span>COMPETITOR DEFICIT ({c.competitorName})</span>
+                        </div>
+                        {c.comparisonPoints.map((cp, idx) => (
+                          <div className="comparison-table-row" key={idx}>
+                            <strong style={{ color: "#223529" }}>{cp.metric}</strong>
+                            <span style={{ color: "#16764b", fontWeight: 600 }}>{cp.yourAdvantage}</span>
+                            <span style={{ color: "#718277" }}>{cp.competitorStatus}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Strengths, Weaknesses, Winnable Gaps */}
+                      <div className="competitor-grid-3">
+                        <div className="competitor-section-box">
+                          <h4 style={{ color: "#486252" }}>Competitor Strengths</h4>
+                          <ul style={{ margin: 0, paddingLeft: 14 }}>
+                            {c.strengths.map((s, idx) => (
+                              <li key={idx} style={{ marginBottom: 4 }}>{s}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div className="competitor-section-box">
+                          <h4 style={{ color: "#9c5a1e" }}>Observed Weaknesses</h4>
+                          <ul style={{ margin: 0, paddingLeft: 14 }}>
+                            {c.weaknesses.map((w, idx) => (
+                              <li key={idx} style={{ marginBottom: 4 }}>{w}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div className="competitor-section-box win">
+                          <h4 style={{ color: "#166a41" }}>Winnable Gaps to Exploit</h4>
+                          <ul style={{ margin: 0, paddingLeft: 14 }}>
+                            {c.winnableGaps.map((g, idx) => (
+                              <li key={idx} style={{ marginBottom: 4 }}>{g}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+
+              {/* Baseline Industry Benchmark */}
+              <div style={{ padding: "0 20px 20px" }}>
+                <h3 style={{ fontSize: 13, margin: "16px 0 10px", color: "#192c20" }}>
+                  Sector Benchmark Baseline ({profile.industry})
+                </h3>
+                <div style={{ display: "grid", gap: 12 }}>
+                  {COMPETITOR_BENCHMARKS.map((c, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        background: "#fff",
+                        border: "1px solid #e3ebe5",
+                        borderRadius: 10,
+                        padding: 16,
+                        display: "grid",
+                        gridTemplateColumns: "200px 1fr 1fr",
+                        gap: 16,
+                        alignItems: "start",
+                      }}
+                    >
+                      <div>
+                        <strong style={{ fontSize: 12, color: "#17271e" }}>{c.dimension}</strong>
+                        <span className="category-pill" style={{ display: "inline-block", marginTop: 6 }}>
+                          {c.impact} Leverage
+                        </span>
+                      </div>
+
+                      <div style={{ background: "#f8faf8", padding: 10, borderRadius: 8, fontSize: 10 }}>
+                        <strong style={{ display: "block", color: "#8a978f", fontSize: 8, marginBottom: 4 }}>
+                          TYPICAL COMPETITOR DEFICIT
+                        </strong>
+                        {c.typicalCompetitor}
+                      </div>
+
+                      <div style={{ background: "#edf7f1", padding: 10, borderRadius: 8, fontSize: 10, color: "#144d32" }}>
+                        <strong style={{ display: "block", color: "#22754d", fontSize: 8, marginBottom: 4 }}>
+                          GAINFORGE WINNABLE ADVANTAGE
+                        </strong>
+                        {c.competitiveOpportunity}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
           )}
@@ -1553,6 +1705,79 @@ export default function Home() {
           </footer>
         </div>
       </section>
+
+      {/* COMPETITOR URL COMPARISON MODAL */}
+      {showCompetitorModal && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !analyzingCompetitor) setShowCompetitorModal(false);
+          }}
+        >
+          <div className="modal">
+            <div className="modal-header">
+              <div>
+                <div className="modal-kicker">
+                  <ShieldCheck size={14} /> COMPETITOR BENCHMARKING
+                </div>
+                <h2>Compare a competitor website</h2>
+                <p>
+                  Input a competitor&apos;s URL to inspect their public positioning, conversion friction, and uncover winnable commercial gaps for {profile.name}.
+                </p>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => setShowCompetitorModal(false)}
+                disabled={analyzingCompetitor}
+                aria-label="Close"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddCompetitor}>
+              <label>
+                Competitor website URL
+                <input
+                  value={competitorUrl}
+                  onChange={(e) => setCompetitorUrl(e.target.value)}
+                  placeholder="https://competitor.com"
+                  type="url"
+                  required
+                />
+              </label>
+
+              <label>
+                Competitor brand / business name (optional)
+                <input
+                  value={competitorName}
+                  onChange={(e) => setCompetitorName(e.target.value)}
+                  placeholder="e.g. Metro Facilities Group"
+                />
+              </label>
+
+              <div className="modal-note">
+                <Lightbulb size={16} />
+                <span>
+                  GainForge evaluates public signals (response time commitments, pricing transparency, SLA guarantees, and audit friction) to show you where you can win contracts.
+                </span>
+              </div>
+
+              <button className="primary-button modal-submit" type="submit" disabled={analyzingCompetitor}>
+                {analyzingCompetitor ? (
+                  <>
+                    <span className="spinner" /> Analyzing competitor website…
+                  </>
+                ) : (
+                  <>
+                    <Search size={15} /> Run competitor comparison <ArrowRight size={15} />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* PLANS & PRICING MODAL (PHASE 06) */}
       {showPricingModal && (
